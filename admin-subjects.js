@@ -468,6 +468,36 @@ window.onclick = function(event) {
     }
 };
 
+// Temporary workaround - fetch all data
+async function loadAllData() {
+    try {
+        // Try to get tutors from a public endpoint first
+        const publicResponse = await fetch('/api/tutors/all');
+        if (publicResponse.ok) {
+            allTutors = await publicResponse.json();
+            console.log('Got tutors from public endpoint:', allTutors.length);
+            return;
+        }
+        
+        // If that fails, try to get from your existing bookings endpoint
+        const token = localStorage.getItem('adminToken');
+        if (token) {
+            const bookingsResponse = await fetch('/api/bookings', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (bookingsResponse.ok) {
+                const bookings = await bookingsResponse.json();
+                // Extract unique tutors from bookings
+                const tutorNames = [...new Set(bookings.map(b => b.tutor_name))];
+                allTutors = tutorNames.map(name => ({ id: name, name: name }));
+                console.log('Extracted tutors from bookings:', allTutors.length);
+            }
+        }
+    } catch (error) {
+        console.error('Error in workaround:', error);
+    }
+}
+
 // Add CSS for the page
 const style = document.createElement('style');
 style.textContent = `
