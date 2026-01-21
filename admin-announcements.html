@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Announcements Management - LearnHub Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-bullhorn"></i> Announcements Management</h1>
+            <p>Create and manage announcements for students</p>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="admin.html"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="admin-announcements.html" class="active"><i class="fas fa-bullhorn"></i> Announcements</a></li>
+                <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutor Management</a></li>
+                <li><a href="admin.html#bookings"><i class="fas fa-calendar-check"></i> Bookings</a></li>
+                <li><a href="admin.html#contacts"><i class="fas fa-envelope"></i> Messages</a></li>
+                <li class="admin-login-item"><a href="index.html" class="admin-login-btn"><i class="fas fa-home"></i> Home</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <!-- Create Announcement Form -->
+        <section>
+            <h2><i class="fas fa-plus-circle"></i> Create New Announcement</h2>
+            <div class="login-form" style="max-width: 800px;">
+                <form id="announcementForm">
+                    <div class="form-group">
+                        <label for="announcementTitle"><i class="fas fa-heading"></i> Title</label>
+                        <input type="text" id="announcementTitle" placeholder="Enter announcement title" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="announcementContent"><i class="fas fa-file-alt"></i> Content</label>
+                        <textarea id="announcementContent" rows="6" placeholder="Enter announcement content" required></textarea>
+                    </div>
+                    
+                    <button type="submit" class="btn" style="width: 100%;">
+                        <i class="fas fa-paper-plane"></i> Publish Announcement
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- Existing Announcements -->
+        <section>
+            <h2><i class="fas fa-list"></i> Existing Announcements</h2>
+            <div id="announcementsList" class="announcements-grid">
+                <!-- Announcements will be loaded here -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close-btn" onclick="closeDeleteModal()">&times;</span>
+            <h3><i class="fas fa-exclamation-triangle"></i> Confirm Deletion</h3>
+            <p>Are you sure you want to delete this announcement? This action cannot be undone.</p>
+            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button onclick="closeDeleteModal()" class="btn" style="background: #6c757d;">Cancel</button>
+                <button onclick="confirmDelete()" class="btn" style="background: #e74c3c;">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 LearnHub. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="admin-announcements.js"></script>
+</body>
+</html>

@@ -114,6 +114,14 @@ function broadcastNotification(type) {
         }
     });
     console.log(`Notification sent to ${clientCount} admin clients`);
+	
+	if (type === 'announcement') {
+        notification.message = 'New announcement posted';
+    } else if (type === 'tutor_added') {
+        notification.message = 'New tutor added';
+    } else if (type === 'tutor_deleted') {
+        notification.message = 'Tutor removed';
+    }
 }
 
 // Verify delete password endpoint
@@ -312,6 +320,184 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error deleting booking:', error.message);
         res.status(500).json({ error: 'Error deleting booking' });
+    }
+});
+
+// Get all announcements
+app.get('/api/announcements', async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT a.*, au.username AS author FROM announcements a LEFT JOIN admin_users au ON a.created_by = au.id ORDER BY a.created_at DESC'
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching announcements:', error.message);
+        res.status(500).json({ error: 'Error fetching announcements' });
+    }
+});
+
+// Create announcement (Protected)
+app.post('/api/announcements', authenticateToken, async (req, res) => {
+    try {
+        const { title, content } = req.body;
+        const created_by = req.user.id; // From JWT token
+        
+        const result = await pool.query(
+            'INSERT INTO announcements (title, content, created_by) VALUES ($1, $2, $3) RETURNING *',
+            [title, content, created_by]
+        );
+        
+        // Broadcast notification for new announcement
+        broadcastNotification('announcement');
+        
+        res.status(201).json({ 
+            message: 'Announcement created successfully', 
+            announcement: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error creating announcement:', error.message);
+        res.status(500).json({ error: 'Error creating announcement' });
+    }
+});
+
+// Update announcement (Protected)
+app.put('/api/announcements/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { title, content } = req.body;
+        
+        const result = await pool.query(
+            'UPDATE announcements SET title = $1, content = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
+            [title, content, id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Announcement not found' });
+        }
+        
+        res.status(200).json({ 
+            message: 'Announcement updated successfully', 
+            announcement: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error updating announcement:', error.message);
+        res.status(500).json({ error: 'Error updating announcement' });
+    }
+});
+
+// Delete announcement (Protected)
+app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await pool.query(
+            'DELETE FROM announcements WHERE id = $1 RETURNING *',
+            [id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Announcement not found' });
+        }
+        
+        broadcastNotification('announcement_deleted');
+        res.status(200).json({ message: 'Announcement deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting announcement:', error.message);
+        res.status(500).json({ error: 'Error deleting announcement' });
+    }
+});
+
+// Get all tutors (for admin)
+app.get('/api/admin/tutors', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM tutors ORDER BY created_at DESC'
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching tutors:', error.message);
+        res.status(500).json({ error: 'Error fetching tutors' });
+    }
+});
+
+// Add new tutor (Protected)
+app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
+    try {
+        const { name, subjects, rating, experience, image, bio } = req.body;
+        
+        const result = await pool.query(
+            'INSERT INTO tutors (name, subjects, rating, experience, image, bio) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+            [name, subjects, rating, experience, image, bio]
+        );
+        
+        broadcastNotification('tutor_added');
+        res.status(201).json({ 
+            message: 'Tutor added successfully', 
+            tutor: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error adding tutor:', error.message);
+        res.status(500).json({ error: 'Error adding tutor' });
+    }
+});
+
+// Update tutor (Protected)
+app.put('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, subjects, rating, experience, image, bio, is_active } = req.body;
+        
+        const result = await pool.query(
+            `UPDATE tutors 
+             SET name = $1, subjects = $2, rating = $3, experience = $4, 
+                 image = $5, bio = $6, is_active = $7 
+             WHERE id = $8 RETURNING *`,
+            [name, subjects, rating, experience, image, bio, is_active, id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Tutor not found' });
+        }
+        
+        res.status(200).json({ 
+            message: 'Tutor updated successfully', 
+            tutor: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error updating tutor:', error.message);
+        res.status(500).json({ error: 'Error updating tutor' });
+    }
+});
+
+// Delete tutor (Protected - with password verification)
+app.delete('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { deletePassword } = req.body;
+        
+        // Verify delete password
+        const isMatch = await bcrypt.compare(deletePassword, DELETE_PASSWORD_HASH);
+        if (!isMatch) {
+            return res.status(401).json({ error: 'Invalid delete password' });
+        }
+        
+        // Check if tutor exists
+        const tutorCheck = await pool.query('SELECT id FROM tutors WHERE id = $1', [id]);
+        if (tutorCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Tutor not found' });
+        }
+        
+        // Delete tutor (cascade will delete related admin_users and bookings)
+        const result = await pool.query('DELETE FROM tutors WHERE id = $1 RETURNING *', [id]);
+        
+        broadcastNotification('tutor_deleted');
+        res.status(200).json({ 
+            message: 'Tutor deleted successfully', 
+            tutor: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error deleting tutor:', error.message);
+        res.status(500).json({ error: 'Error deleting tutor' });
     }
 });
 

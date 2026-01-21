@@ -5,59 +5,105 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - LearnHub</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://kit.fontawesome.com/64d58efce2.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>
         <div class="container">
-            <h1>Admin Dashboard</h1>
+            <h1><i class="fas fa-tachometer-alt"></i> Admin Dashboard</h1>
+            <p>Manage your LearnHub platform</p>
         </div>
     </header>
 
     <nav>
-        <ul>
-            <li><a href="#bookings">Bookings</a></li>
-            <li><a href="#contacts">Contact Messages</a></li>
-        </ul>
+        <div class="container">
+            <ul>
+                <li><a href="#bookings"><i class="fas fa-calendar-check"></i> Bookings</a></li>
+                <li><a href="#contacts"><i class="fas fa-envelope"></i> Messages</a></li>
+                <li><a href="admin-announcements.html"><i class="fas fa-bullhorn"></i> Announcements</a></li>
+                <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutors</a></li>
+                <li class="admin-login-item"><a href="index.html" class="admin-login-btn"><i class="fas fa-home"></i> Home</a></li>
+            </ul>
+        </div>
     </nav>
 
     <main class="container">
+        <!-- Quick Stats Section -->
+        <section id="quick-stats" style="margin-bottom: 40px;">
+            <h2><i class="fas fa-chart-line"></i> Quick Stats</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                <div class="announcement-card">
+                    <h3><i class="fas fa-calendar-check" style="color: #3498db;"></i> Total Bookings</h3>
+                    <p id="total-bookings" style="font-size: 2rem; font-weight: bold; color: #2c3e50;">0</p>
+                </div>
+                <div class="announcement-card">
+                    <h3><i class="fas fa-envelope" style="color: #e74c3c;"></i> New Messages</h3>
+                    <p id="total-contacts" style="font-size: 2rem; font-weight: bold; color: #2c3e50;">0</p>
+                </div>
+                <div class="announcement-card">
+                    <h3><i class="fas fa-bullhorn" style="color: #2ecc71;"></i> Announcements</h3>
+                    <p id="total-announcements" style="font-size: 2rem; font-weight: bold; color: #2c3e50;">0</p>
+                </div>
+                <div class="announcement-card">
+                    <h3><i class="fas fa-chalkboard-teacher" style="color: #f39c12;"></i> Active Tutors</h3>
+                    <p id="total-tutors" style="font-size: 2rem; font-weight: bold; color: #2c3e50;">0</p>
+                </div>
+            </div>
+        </section>
+
         <section id="bookings">
-            <h2>Bookings</h2>
-            <table id="bookings-table">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Tutor</th>
-                        <th>Subject</th>
-                        <th>User Number</th>
-                        <th>Schedule</th>
-                        <th>Created At</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2><i class="fas fa-calendar-check"></i> Recent Bookings</h2>
+                <a href="#bookings" class="btn" onclick="fetchBookings()" style="padding: 8px 16px; font-size: 0.9rem;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </a>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="bookings-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Tutor</th>
+                            <th>Subject</th>
+                            <th>User Number</th>
+                            <th>Schedule</th>
+                            <th>Created At</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </section>
 
         <section id="contacts">
-            <h2>Contact Messages</h2>
-            <table id="contacts-table">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Number</th>
-                        <th>Message</th>
-                        <th>Created At</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2><i class="fas fa-envelope"></i> Contact Messages</h2>
+                <a href="#contacts" class="btn" onclick="fetchContacts()" style="padding: 8px 16px; font-size: 0.9rem;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </a>
+            </div>
+            <div style="overflow-x: auto;">
+                <table id="contacts-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Number</th>
+                            <th>Message</th>
+                            <th>Created At</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </section>
 
         <section class="logout-section container">
-            <a href="#" class="btn" id="logout-btn">Logout</a>
+            <button class="btn" id="logout-btn" style="background: #e74c3c;">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
         </section>
     </main>
 
