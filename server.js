@@ -472,31 +472,82 @@ app.get('/api/admin/subjects', authenticateToken, async (req, res) => {
 // Add new tutor (Protected)
 app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
     try {
-        const { name, subjects, rating, experience, image, bio, is_active = true } = req.body;
-        console.log('Adding new tutor:', { name, subjects });
+        const { name, subjects, rating, experience, image, bio } = req.body;
+        console.log('Adding new tutor:', { name, subjects, rating, experience });
         
-        // Convert subjects array to PostgreSQL array format if needed
+        // Ensure subjects is properly formatted as PostgreSQL array
         let subjectsArray = subjects;
         if (Array.isArray(subjects)) {
-            subjectsArray = `{${subjects.join(',')}}`;
+            subjectsArray = `{${subjects.map(s => s.trim().toLowerCase()).join(',')}}`;
+        } else if (typeof subjects === 'string') {
+            subjectsArray = `{${subjects.split(',').map(s => s.trim().toLowerCase()).join(',')}}`;
         }
+		
+		console.log('Formatted subjects:', subjectsArray);
         
         const result = await pool.query(
             `INSERT INTO tutors (name, subjects, rating, experience, image, bio, is_active) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) 
              RETURNING *`,
-            [name, subjectsArray, rating, experience, image, bio || '', is_active]
+            [name, subjectsArray, rating, experience, image, bio || '', true]
         );
         
-        console.log('Tutor added successfully:', result.rows[0].id);
+        console.log('Tutor added successfully. ID:', result.rows[0].id);
         broadcastNotification('tutor_added');
+        
         res.status(201).json({ 
             message: 'Tutor added successfully', 
             tutor: result.rows[0] 
         });
-    } catch (error) {
+		
+		 } catch (error) {
         console.error('Error adding tutor:', error.message);
-        res.status(500).json({ error: 'Error adding tutor', details: error.message });
+        console.error('Full error:', error);
+        res.status(500).json({ 
+            error: 'Error adding tutor', 
+            details: error.message,
+            code: error.code 
+        });
+    }
+});
+
+// Update tutor (Protected)
+app.put('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, subjects, rating, experience, image, bio, is_active } = req.body;
+        
+        // Format subjects if provided
+        let subjectsArray = subjects;
+        if (subjects && Array.isArray(subjects)) {
+            subjectsArray = `{${subjects.map(s => s.trim().toLowerCase()).join(',')}}`;
+        }
+		
+		 const result = await pool.query(
+            `UPDATE tutors 
+             SET name = COALESCE($1, name),
+                 subjects = COALESCE($2, subjects),
+                 rating = COALESCE($3, rating),
+                 experience = COALESCE($4, experience),
+                 image = COALESCE($5, image),
+                 bio = COALESCE($6, bio),
+                 is_active = COALESCE($7, is_active)
+             WHERE id = $8 
+             RETURNING *`,
+            [name, subjectsArray, rating, experience, image, bio, is_active, id]
+        );
+		
+		if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Tutor not found' });
+        }
+        
+        res.status(200).json({ 
+            message: 'Tutor updated successfully', 
+            tutor: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error updating tutor:', error.message);
+        res.status(500).json({ error: 'Error updating tutor' });
     }
 });
 
@@ -649,16 +700,17 @@ app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, 
 // Get all tutors for admin (Protected)
 app.get('/api/admin/tutors', authenticateToken, async (req, res) => {
     try {
+        console.log('Admin fetching all tutors...');
         const result = await pool.query(
-            'SELECT * FROM tutors ORDER BY name'
+            'SELECT * FROM tutors ORDER BY created_at DESC'
         );
+        console.log(`Found ${result.rows.length} tutors`);
         res.status(200).json(result.rows);
     } catch (error) {
         console.error('Error fetching tutors for admin:', error.message);
         res.status(500).json({ error: 'Error fetching tutors for admin' });
     }
 });
-
 // Get assignments for a subject (Protected) - referenced in loadCurrentAssignments()
 app.get('/api/admin/subjects/:subjectId/tutors', authenticateToken, async (req, res) => {
     try {
