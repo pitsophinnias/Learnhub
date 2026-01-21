@@ -615,4 +615,78 @@ app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, 
     }
 });
 
+// Get all tutors for admin (Protected)
+app.get('/api/admin/tutors', authenticateToken, async (req, res) => {
+    try {
+        const result = await pool.query(
+            'SELECT * FROM tutors ORDER BY name'
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching tutors for admin:', error.message);
+        res.status(500).json({ error: 'Error fetching tutors for admin' });
+    }
+});
+
+// Get assignments for a subject (Protected) - referenced in loadCurrentAssignments()
+app.get('/api/admin/subjects/:subjectId/tutors', authenticateToken, async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        const result = await pool.query(`
+            SELECT t.*
+            FROM tutors t
+            JOIN tutor_subjects ts ON t.id = ts.tutor_id
+            WHERE ts.subject_id = $1
+            ORDER BY t.name
+        `, [subjectId]);
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching subject assignments:', error.message);
+        res.status(500).json({ error: 'Error fetching subject assignments' });
+    }
+});
+
+// Clear all assignments for a subject (Protected) - referenced in saveAssignments()
+app.delete('/api/admin/subjects/:subjectId/assignments', authenticateToken, async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        const result = await pool.query(
+            'DELETE FROM tutor_subjects WHERE subject_id = $1 RETURNING *',
+            [subjectId]
+        );
+        res.status(200).json({ 
+            message: 'Assignments cleared successfully',
+            count: result.rows.length
+        });
+    } catch (error) {
+        console.error('Error clearing assignments:', error.message);
+        res.status(500).json({ error: 'Error clearing assignments' });
+    }
+});
+
+// Update subject status (Protected) - referenced in toggleSubjectStatus()
+app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        const { is_available } = req.body;
+        
+        const result = await pool.query(
+            'UPDATE subjects SET is_available = $1 WHERE id = $2 RETURNING *',
+            [is_available, subjectId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
+        
+        res.status(200).json({ 
+            message: 'Subject status updated successfully',
+            subject: result.rows[0]
+        });
+    } catch (error) {
+        console.error('Error updating subject status:', error.message);
+        res.status(500).json({ error: 'Error updating subject status' });
+    }
+});
+
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
