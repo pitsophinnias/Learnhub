@@ -252,7 +252,7 @@ app.get('/api/tutors/:subject', async (req, res) => {
     try {
         const subject = req.params.subject.toLowerCase();
         console.log('Fetching tutors for:', subject);
-        const result = await pool.query('SELECT * FROM tutors WHERE subjects ? $1', [subject]);
+        const result = await pool.query('SELECT * FROM tutors WHERE $1 = ANY(subjects)', [subject]);
         console.log('Tutors found:', result.rows);
         if (result.rows.length === 0) {
             console.log(`No tutors found for subject: ${subject}`);
