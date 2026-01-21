@@ -525,3 +525,229 @@ function setupAnnouncementWebSocket() {
         setTimeout(setupAnnouncementWebSocket, 5000);
     };
 }
+// Load subjects from server
+async function loadSubjects() {
+    try {
+        const response = await fetch('/api/subjects');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const subjects = await response.json();
+        console.log('Subjects loaded:', subjects); // Debug log
+        
+        const container = document.getElementById('subjects-container');
+        
+        if (!subjects || subjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>Check back later for available subjects.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Filter only available subjects
+        const availableSubjects = subjects.filter(subject => subject.is_available !== false);
+        
+        if (availableSubjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>All subjects are currently unavailable.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = availableSubjects.map(subject => `
+            <div class="subject-card" data-subject="${subject.name.toLowerCase()}">
+                <i class="${subject.icon || 'fas fa-book'}"></i>
+                <h3>${escapeHtml(subject.name)}</h3>
+                <p>${escapeHtml(subject.description || 'Expert tutoring available')}</p>
+                <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
+                <button class="select-btn" onclick="selectSubject('${escapeHtml(subject.name)}')">
+                    Select
+                </button>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        const container = document.getElementById('subjects-container');
+        container.innerHTML = `
+            <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                <h3>Error Loading Subjects</h3>
+                <p>Please try again later.</p>
+                <button onclick="loadSubjects()" class="btn" style="margin-top: 10px;">
+                    <i class="fas fa-sync-alt"></i> Retry
+                </button>
+            </div>
+        `;
+    }
+}
+
+// Select subject function
+function selectSubject(subjectName) {
+    console.log('Selected subject:', subjectName);
+    // Your existing subject selection logic here
+    // For now, just show the tutor modal
+    showTutorModal(subjectName);
+}
+
+async function loadSubjects() {
+    try {
+        console.log('Loading subjects from API...');
+        
+        // ADD CACHE BUSTING
+        const response = await fetch(`/api/subjects?t=${Date.now()}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const subjects = await response.json();
+        console.log('Subjects received:', subjects);
+        
+        const container = document.getElementById('subjects-container');
+        if (!container) {
+            console.error('Subjects container not found!');
+            return;
+        }
+        
+        if (!subjects || subjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>Check back later for available subjects.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Filter available subjects
+        const availableSubjects = subjects.filter(subject => subject.is_available !== false);
+        
+        if (availableSubjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>All subjects are currently unavailable.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Create subject cards
+        container.innerHTML = availableSubjects.map(subject => {
+            const subjectName = subject.name.toLowerCase();
+            return `
+                <div class="subject-card" data-subject="${subjectName}">
+                    <i class="${subject.icon || 'fas fa-book'}"></i>
+                    <h3>${escapeHtml(subject.name)}</h3>
+                    <p>${escapeHtml(subject.description || 'Expert tutoring available')}</p>
+                    <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
+                    <button class="select-btn" onclick="selectSubject('${subjectName}')">
+                        Select
+                    </button>
+                </div>
+            `;
+        }).join('');
+        
+        console.log(`Displayed ${availableSubjects.length} subjects`);
+        
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        const container = document.getElementById('subjects-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Error Loading Subjects</h3>
+                    <p>${error.message}</p>
+                    <button onclick="loadSubjects()" class="btn" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+}
+
+function selectSubject(subjectName) {
+    console.log('Selected subject:', subjectName);
+    // Your existing subject selection logic
+    // This should trigger your tutor modal
+    fetchTutorsBySubject(subjectName);
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Make sure this function exists for fetching tutors
+async function fetchTutorsBySubject(subject) {
+    // Your existing code for fetching tutors by subject
+    console.log('Fetching tutors for:', subject);
+    // ... your existing modal logic ...
+}
+
+// ==============================================
+// INITIALIZATION
+// ==============================================
+
+document.addEventListener('DOMContentLoaded', function() {
+    // ... your existing initialization code ...
+    
+    // Load dynamic content
+    loadAnnouncements();
+    loadSubjects(); // Add this line here
+    
+    // ... rest of your existing code ...
+});
+// Show tutor modal (you might already have this)
+function showTutorModal(subject) {
+    // Your existing modal logic
+    console.log('Opening tutor modal for:', subject);
+    // ... existing code ...
+}
+
+// Escape HTML function
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+
+// Call this in your DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function() {
+    // ... existing code ...
+    loadSubjects(); // Add this line
+    loadActiveTutors(); // Add this to show active tutors somewhere
+});
+
+// Load active tutors for display
+async function loadActiveTutors() {
+    try {
+        const response = await fetch('/api/tutors/active');
+        const tutors = await response.json();
+        
+        // You can display these tutors in a section if you want
+        console.log('Active tutors:', tutors);
+        
+    } catch (error) {
+        console.error('Error loading active tutors:', error);
+    }
+}

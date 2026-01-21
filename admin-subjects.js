@@ -178,17 +178,47 @@ async function openAssignModal(subjectId, subjectName) {
 async function loadAvailableTutors() {
     try {
         const token = localStorage.getItem('adminToken');
-        const response = await fetch(`${API_BASE}/api/admin/tutors`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        
+        // ADD CACHE BUSTING
+        const url = `${API_BASE}/api/admin/tutors?t=${Date.now()}`;
+        
+        const response = await fetch(url, {
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache'
+            }
         });
+        
+        if (response.status === 401) {
+            localStorage.removeItem('adminToken');
+            window.location.href = 'admin_login.html';
+            return;
+        }
         
         if (response.ok) {
             allTutors = await response.json();
+            console.log(`Loaded ${allTutors.length} tutors`); // Debug
+            
+            // Check if we need to show a message about new tutors
+            const lastUpdate = localStorage.getItem('tutorsLastSeen');
+            const tutorsUpdated = localStorage.getItem('tutorsUpdated');
+            
+            if (tutorsUpdated && (!lastUpdate || parseInt(tutorsUpdated) > parseInt(lastUpdate))) {
+                showNotification('New tutors available. Refreshing list...', 'info');
+                localStorage.setItem('tutorsLastSeen', Date.now().toString());
+            }
+        } else {
+            console.error('Failed to load tutors:', response.status);
+            allTutors = [];
         }
     } catch (error) {
         console.error('Error loading tutors:', error);
+        allTutors = [];
+        showNotification('Error loading tutors list', 'error');
     }
 }
+
 
 // Load current assignments for this subject
 async function loadCurrentAssignments() {
