@@ -255,23 +255,119 @@ app.delete('/api/contacts/:number', authenticateToken, async (req, res) => {
     }
 });
 
-// Get Tutors by Subject
+// Get Tutors by Subject 
 app.get('/api/tutors/:subject', async (req, res) => {
     try {
         const subject = req.params.subject.toLowerCase();
-        console.log('Fetching tutors for:', subject);
-        const result = await pool.query('SELECT * FROM tutors WHERE $1 = ANY(subjects)', [subject]);
-        console.log('Tutors found:', result.rows);
-        if (result.rows.length === 0) {
-            console.log(`No tutors found for subject: ${subject}`);
+        console.log('Fetching tutors for subject:', subject);
+        
+        // Check BOTH systems for compatibility:
+        // 1. Check tutor_subjects table
+        const queryFromTutorSubjects = `
+            SELECT DISTINCT t.* 
+            FROM tutors t
+            JOIN tutor_subjects ts ON t.id = ts.tutor_id
+            JOIN subjects s ON ts.subject_id = s.id
+            WHERE LOWER(s.name) = $1 
+              AND t.is_active = true
+              AND s.is_available = true
+            ORDER BY t.rating DESC
+        `;
+        
+        // 2. Also check the legacy subjects array in tutors table
+        const queryFromTutorsArray = `
+            SELECT DISTINCT t.* 
+            FROM tutors t
+            WHERE $1 = ANY(LOWER(t.subjects::text)::text[])
+              AND t.is_active = true
+            ORDER BY t.rating DESC
+        `;
+        
+        // Try tutor_subjects first
+        const result1 = await pool.query(queryFromTutorSubjects, [subject]);
+        
+        // If no tutors found, try the legacy array method
+        if (result1.rows.length === 0) {
+            console.log('No tutors found in tutor_subjects, checking tutors array...');
+            const result2 = await pool.query(queryFromTutorsArray, [subject]);
+            console.log(`Found ${result2.rows.length} tutors from array`);
+            return res.status(200).json(result2.rows);
         }
-        res.status(200).json(result.rows);
+        
+        console.log(`Found ${result1.rows.length} tutors for subject: ${subject}`);
+        res.status(200).json(result1.rows);
+        
     } catch (error) {
         console.error('Error fetching tutors:', error.message);
-        res.status(500).json({ error: 'Error fetching tutors' });
+        
+        // Fallback to legacy method if there's an error
+        try {
+            const subject = req.params.subject.toLowerCase();
+            const fallbackResult = await pool.query(
+                'SELECT * FROM tutors WHERE $1 = ANY(LOWER(subjects::text)::text[]) AND is_active = true ORDER BY rating DESC',
+                [subject]
+            );
+            console.log(`Fallback found ${fallbackResult.rows.length} tutors`);
+            res.status(200).json(fallbackResult.rows);
+        } catch (fallbackError) {
+            console.error('Fallback also failed:', fallbackError.message);
+            res.status(500).json({ error: 'Error fetching tutors' });
+        }
     }
 });
 
+// Sync tutor subjects between both systems (run this once)
+app.get('/api/admin/sync-tutor-subjects', authenticateToken, async (req, res) => {
+    try {
+        console.log('Starting tutor subjects synchronization...');
+        
+        // Get all tutors with their subjects array
+        const tutorsResult = await pool.query('SELECT id, subjects FROM tutors WHERE is_active = true');
+        const tutors = tutorsResult.rows;
+        
+        let addedCount = 0;
+        let errorCount = 0;
+        
+        for (const tutor of tutors) {
+            if (tutor.subjects && Array.isArray(tutor.subjects) && tutor.subjects.length > 0) {
+                for (const subjectName of tutor.subjects) {
+                    try {
+                        // Get subject ID
+                        const subjectResult = await pool.query(
+                            'SELECT id FROM subjects WHERE LOWER(name) = $1 AND is_available = true',
+                            [subjectName.toLowerCase()]
+                        );
+                        
+                        if (subjectResult.rows.length > 0) {
+                            const subjectId = subjectResult.rows[0].id;
+                            
+                            // Insert into tutor_subjects (skip if already exists)
+                            await pool.query(
+                                'INSERT INTO tutor_subjects (tutor_id, subject_id) VALUES ($1, $2) ON CONFLICT (tutor_id, subject_id) DO NOTHING',
+                                [tutor.id, subjectId]
+                            );
+                            addedCount++;
+                        }
+                    } catch (error) {
+                        errorCount++;
+                        console.error(`Error syncing subject ${subjectName} for tutor ${tutor.id}:`, error.message);
+                    }
+                }
+            }
+        }
+        
+        console.log(`Sync completed: ${addedCount} assignments added, ${errorCount} errors`);
+        res.status(200).json({ 
+            message: 'Sync completed', 
+            added: addedCount, 
+            errors: errorCount 
+        });
+        
+    } catch (error) {
+        console.error('Error syncing tutor subjects:', error.message);
+        res.status(500).json({ error: 'Error syncing tutor subjects' });
+    }
+});
 // Create Booking
 app.post('/api/bookings', async (req, res) => {
     try {
@@ -575,25 +671,81 @@ app.post('/api/admin/subjects', authenticateToken, async (req, res) => {
     }
 });
 
-// Assign tutor to subject (protected)
+// Assign tutor to subject (protected) 
 app.post('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, async (req, res) => {
     try {
         const { tutorId, subjectId } = req.params;
         
+        // Check if tutor exists and is active
+        const tutorCheck = await pool.query(
+            'SELECT id, name, subjects FROM tutors WHERE id = $1 AND is_active = true',
+            [tutorId]
+        );
+        
+        if (tutorCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Tutor not found or inactive' });
+        }
+        
+        const tutor = tutorCheck.rows[0];
+        
+        // Check if subject exists and is available
+        const subjectCheck = await pool.query(
+            'SELECT id, name FROM subjects WHERE id = $1 AND is_available = true',
+            [subjectId]
+        );
+        
+        if (subjectCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Subject not found or unavailable' });
+        }
+        
+        const subject = subjectCheck.rows[0];
+        
+        // 1. Add to tutor_subjects table
         const result = await pool.query(
-            'INSERT INTO tutor_subjects (tutor_id, subject_id) VALUES ($1, $2) RETURNING *',
+            'INSERT INTO tutor_subjects (tutor_id, subject_id) VALUES ($1, $2) ON CONFLICT (tutor_id, subject_id) DO NOTHING RETURNING *',
             [tutorId, subjectId]
         );
         
+        if (result.rows.length === 0) {
+            // Already exists in tutor_subjects, but still need to update tutors array
+            console.log('Tutor already assigned in tutor_subjects');
+        }
+        
+        // 2. Also update the subjects array in tutors table for backward compatibility
+        let updatedSubjects = [];
+        
+        if (tutor.subjects && Array.isArray(tutor.subjects)) {
+            // Add subject if not already in array
+            const subjectLower = subject.name.toLowerCase();
+            if (!tutor.subjects.some(s => s.toLowerCase() === subjectLower)) {
+                updatedSubjects = [...tutor.subjects, subjectLower];
+            } else {
+                updatedSubjects = tutor.subjects; // Already there
+            }
+        } else {
+            // No existing subjects, create new array
+            updatedSubjects = [subject.name.toLowerCase()];
+        }
+        
+        // Update tutors table
+        await pool.query(
+            'UPDATE tutors SET subjects = $1 WHERE id = $2',
+            [updatedSubjects, tutorId]
+        );
+        
+        console.log(`Tutor ${tutor.name} assigned to subject ${subject.name}`);
+        console.log(`Updated subjects array: ${updatedSubjects.join(', ')}`);
+        
         res.status(201).json({ 
-            message: 'Tutor assigned to subject successfully'
+            message: 'Tutor assigned to subject successfully',
+            updatedArray: updatedSubjects
         });
+        
     } catch (error) {
         console.error('Error assigning tutor to subject:', error.message);
         res.status(500).json({ error: 'Error assigning tutor to subject' });
     }
 });
-
 // Remove tutor from subject (protected)
 app.delete('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, async (req, res) => {
     try {

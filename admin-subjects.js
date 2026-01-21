@@ -498,6 +498,34 @@ async function loadAllData() {
     }
 }
 
+// Add this function to manually sync
+async function syncTutorSubjects() {
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch(`${API_BASE}/api/admin/sync-tutor-subjects`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification(`Sync completed: ${result.added} assignments added`, 'success');
+            // Reload subjects to show updated counts
+            loadSubjects();
+        } else {
+            showNotification(result.error || 'Sync failed', 'error');
+        }
+    } catch (error) {
+        console.error('Error syncing:', error);
+        showNotification('Error syncing tutor subjects', 'error');
+    }
+}
+
+// Add a sync button to your HTML (in admin-subjects.html, add this near the top):
+// <button onclick="syncTutorSubjects()" class="btn" style="float: right; margin-top: 20px;">
+//     <i class="fas fa-sync-alt"></i> Sync Tutor Subjects
+// </button>
+
 // Add CSS for the page
 const style = document.createElement('style');
 style.textContent = `
