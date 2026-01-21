@@ -1,803 +1,761 @@
-const express = require('express');
-const { Pool } = require('pg');
-const cors = require('cors');
-const path = require('path');
-const WebSocket = require('ws');
-const http = require('http');
-const bodyParser = require('body-parser');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const app = express();
-const PORT = process.env.PORT || 3000;
+// LearnHub Main Script - Browser Version
+// ==============================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key_change_in_production';
-const DELETE_PASSWORD_HASH = process.env.DELETE_PASSWORD_HASH || '$2b$10$9k3Qz8J8k2j3m4n5p6q7r8s9t0u1v2w3x4y5z6a7b8c9d0e1f2g3';
+// Global variables
+let currentDate = new Date();
+let selectedExamDate = new Date(new Date().getFullYear(), 5, 15); // June 15th
+let ws = null;
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use('/images', express.static(path.join(__dirname, 'images')));
-app.use(express.static(path.join(__dirname, '.')));
-
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
-    const token = req.headers['authorization']?.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Access denied' });
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch (error) {
-        console.error('Token verification error:', error);
-        res.status(403).json({ error: 'Invalid token' });
+// Main initialization
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('LearnHub initialized');
+    
+    // Mobile menu toggle
+    const menuToggle = document.getElementById('menu-toggle');
+    const navMenu = document.getElementById('nav-menu');
+    const mainNav = document.getElementById('main-nav');
+    
+    if (menuToggle && navMenu) {
+        menuToggle.addEventListener('click', function() {
+            mainNav.classList.toggle('side-menu');
+            mainNav.classList.toggle('active');
+        });
     }
-};
-
-// PostgreSQL Connection
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
-
-pool.connect((err, client, release) => {
-    if (err) {
-        console.error('Database connection error:', err.stack);
-    } else {
-        console.log('✅ Database connected successfully');
-        release();
-    }
-});
-
-// Create HTTP server and WebSocket
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-
-// Map to store admin WebSocket connections
-const adminClients = new Map();
-
-wss.on('connection', (ws, req) => {
-    console.log(`WebSocket client connected from ${req.socket.remoteAddress}`);
-    ws.isAdmin = false;
-    ws.adminId = null;
-
-    ws.on('message', (data) => {
-        try {
-            const message = JSON.parse(data.toString());
-            if (message.type === 'admin_login' && message.adminId) {
-                ws.isAdmin = true;
-                ws.adminId = message.adminId;
-                adminClients.set(message.adminId, ws);
-                console.log(`Admin ${message.adminId} registered with WebSocket`);
+    
+    // Calendar initialization
+    initializeCalendar();
+    startCountdown();
+    
+    // Contact form submission
+    const contactForm = document.getElementById('contact-form');
+    if (contactForm) {
+        contactForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const name = document.getElementById('name').value.trim();
+            const number = document.getElementById('number').value.trim();
+            const message = document.getElementById('message').value.trim();
+            
+            if (!name || !number || !message) {
+                showNotification('Please fill in all fields', 'error');
+                return;
             }
-        } catch (error) {
-            console.error('WebSocket message error:', error);
-        }
-    });
-
-    ws.on('close', (code, reason) => {
-        console.log(`WebSocket client disconnected: code=${code}, reason=${reason}`);
-        if (ws.isAdmin && ws.adminId) {
-            adminClients.delete(ws.adminId);
-        }
-    });
-
-    ws.on('error', (error) => {
-        console.error('WebSocket server error:', error);
-        if (ws.isAdmin && ws.adminId) {
-            adminClients.delete(ws.adminId);
-        }
-    });
-});
-
-wss.on('error', (error) => {
-    console.error('WebSocket server error:', error);
-});
-
-// Function to broadcast notifications
-function broadcastNotification(type) {
-    console.log('Broadcasting notification:', type);
-    let clientCount = 0;
-    
-    let message = '';
-    switch (type) {
-        case 'booking': message = 'New booking received'; break;
-        case 'booking_deleted': message = 'Booking deleted'; break;
-        case 'contact': message = 'New contact message'; break;
-        case 'contact_deleted': message = 'Contact message deleted'; break;
-        case 'announcement': message = 'New announcement posted'; break;
-        case 'announcement_deleted': message = 'Announcement deleted'; break;
-        case 'tutor_added': message = 'New tutor added'; break;
-        case 'tutor_deleted': message = 'Tutor removed'; break;
-        case 'subject_added': message = 'New subject added'; break;
-        default: message = 'New notification';
-    }
-    
-    adminClients.forEach((ws, adminId) => {
-        if (ws.readyState === WebSocket.OPEN) {
+            
+            if (number.length < 8) {
+                showNotification('Please enter a valid phone number', 'error');
+                return;
+            }
+            
             try {
-                const notification = {
-                    type: type,
-                    message: message,
-                    isBrowserNotification: true,
-                    timestamp: new Date().toISOString()
-                };
-                ws.send(JSON.stringify(notification));
-                clientCount++;
+                const response = await fetch('/api/contact', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, number, message })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    showNotification('Message sent successfully! We\'ll contact you soon.', 'success');
+                    contactForm.reset();
+                } else {
+                    showNotification(result.error || 'Error sending message', 'error');
+                }
             } catch (error) {
-                console.error(`Error sending to admin ${adminId}:`, error);
-                adminClients.delete(adminId);
+                console.error('Error sending message:', error);
+                showNotification('Network error. Please try again.', 'error');
             }
+        });
+    }
+    
+    // Load dynamic content
+    loadAnnouncements();
+    loadSubjects();
+    
+    // Initialize tutor modal
+    initializeTutorModal();
+    
+    // Request notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
+    // Setup WebSocket for real-time updates
+    setupAnnouncementWebSocket();
+    
+    // Close mobile menu when clicking outside
+    document.addEventListener('click', function(event) {
+        if (mainNav && mainNav.classList.contains('active') && 
+            !event.target.closest('nav') && 
+            !event.target.closest('.menu-toggle')) {
+            mainNav.classList.remove('active');
+            mainNav.classList.remove('side-menu');
         }
     });
-    console.log(`Notification sent to ${clientCount} admin clients`);
+});
+
+// ==============================================
+// ANNOUNCEMENTS FUNCTIONS
+// ==============================================
+
+async function loadAnnouncements() {
+    try {
+        console.log('Loading announcements...');
+        const response = await fetch('/api/announcements');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const announcements = await response.json();
+        console.log('Announcements received:', announcements);
+        
+        // Check which container exists
+        let container = document.getElementById('announcements-container');
+        if (!container) {
+            container = document.querySelector('.announcements-grid');
+        }
+        
+        if (!container) {
+            console.error('Announcements container not found!');
+            return;
+        }
+        
+        if (!announcements || announcements.length === 0) {
+            container.innerHTML = `
+                <div class="announcement-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-bullhorn" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Announcements Yet</h3>
+                    <p>Check back later for updates from our team.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = announcements.map(announcement => `
+            <div class="announcement-card">
+                <h3>${escapeHtml(announcement.title)}</h3>
+                <p class="announcement-date">
+                    <i class="far fa-calendar"></i> ${formatDate(announcement.created_at)}
+                    ${announcement.author ? ` • <i class="fas fa-user"></i> ${escapeHtml(announcement.author)}` : ''}
+                </p>
+                <p>${escapeHtml(announcement.content)}</p>
+            </div>
+        `).join('');
+        
+        console.log(`Displayed ${announcements.length} announcements`);
+        
+    } catch (error) {
+        console.error('Error loading announcements:', error);
+        const container = document.getElementById('announcements-container') || document.querySelector('.announcements-grid');
+        if (container) {
+            container.innerHTML = `
+                <div class="announcement-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Error Loading Announcements</h3>
+                    <p>Please try again later.</p>
+                </div>
+            `;
+        }
+    }
 }
 
 // ==============================================
-// AUTHENTICATION ENDPOINTS
+// SUBJECTS FUNCTIONS
 // ==============================================
 
-// Verify delete password endpoint
-app.post('/api/verify-delete-password', async (req, res) => {
+async function loadSubjects() {
     try {
-        const { password } = req.body;
-        const isMatch = await bcrypt.compare(password, DELETE_PASSWORD_HASH);
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid delete password' });
-        }
-        res.status(200).json({ message: 'Password verified' });
-    } catch (error) {
-        console.error('Error verifying delete password:', error);
-        res.status(500).json({ error: 'Server error' });
-    }
-});
-
-// Admin Registration Endpoint
-app.post('/api/admin/register', async (req, res) => {
-    try {
-        const { tutorId, username, password } = req.body;
-        console.log('Admin registration attempt:', { tutorId, username });
+        console.log('Loading subjects...');
+        const response = await fetch('/api/subjects');
         
-        // Validate tutor ID exists
-        const tutorResult = await pool.query('SELECT id FROM tutors WHERE id = $1', [tutorId]);
-        if (tutorResult.rows.length === 0) {
-            console.log('Tutor not found:', tutorId);
-            return res.status(400).json({ error: 'Invalid tutor ID' });
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        // Check if username already exists
-        const existingUser = await pool.query('SELECT id FROM admin_users WHERE username = $1', [username]);
-        if (existingUser.rows.length > 0) {
-            console.log('Username already exists:', username);
-            return res.status(400).json({ error: 'Username already exists' });
+        const subjects = await response.json();
+        console.log('Subjects received:', subjects);
+        
+        // Check which container exists
+        let container = document.getElementById('subjects-container');
+        if (!container) {
+            container = document.querySelector('.subjects-grid');
         }
         
-        // Hash password
-        const saltRounds = 10;
-        const passwordHash = await bcrypt.hash(password, saltRounds);
-
-        // Insert 
-        const result = await pool.query(
-            'INSERT INTO admin_users (tutor_id, username, password_hash) VALUES ($1, $2, $3) RETURNING id, username',
-            [tutorId, username, passwordHash]
-        );
-
-        console.log('Admin registered:', result.rows[0]);
-        res.status(201).json({ message: 'Registration successful' });
+        if (!container) {
+            console.error('Subjects container not found!');
+            return;
+        }
+        
+        if (!subjects || subjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>Check back later for available subjects.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Filter available subjects
+        const availableSubjects = subjects.filter(subject => subject.is_available !== false);
+        
+        if (availableSubjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Subjects Available</h3>
+                    <p>All subjects are currently unavailable.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        // Create subject cards
+        container.innerHTML = availableSubjects.map(subject => {
+            const subjectName = subject.name.toLowerCase();
+            return `
+                <div class="subject-card" data-subject="${subjectName}">
+                    <i class="${subject.icon || 'fas fa-book'}"></i>
+                    <h3>${escapeHtml(subject.name)}</h3>
+                    <p>${escapeHtml(subject.description || 'Expert tutoring available')}</p>
+                    <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
+                    <button class="select-btn" onclick="fetchTutorsBySubject('${subjectName}')">
+                        Select
+                    </button>
+                </div>
+            `;
+        }).join('');
+        
+        console.log(`Displayed ${availableSubjects.length} subjects`);
+        
     } catch (error) {
-        console.error('Error during registration:', error.message);
-        res.status(500).json({ error: 'Error during registration' });
+        console.error('Error loading subjects:', error);
+        const container = document.getElementById('subjects-container') || document.querySelector('.subjects-grid');
+        if (container) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Error Loading Subjects</h3>
+                    <p>${error.message}</p>
+                    <button onclick="loadSubjects()" class="btn" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
     }
-});
+}
 
-// Admin Login Endpoint
-app.post('/api/admin/login', async (req, res) => {
+async function fetchTutorsBySubject(subject) {
+    console.log('Fetching tutors for subject:', subject);
+    
     try {
-        const { username, password } = req.body;
-        console.log('Admin login attempt:', { username });
-
-        const result = await pool.query('SELECT * FROM admin_users WHERE username = $1', [username]);
-        const admin = result.rows[0];
-
-        if (!admin) {
-            console.log('Admin not found:', username);
-            return res.status(401).json({ error: 'Invalid username or password' });
+        const cleanSubject = subject.toLowerCase().trim();
+        const response = await fetch(`/api/tutors/${cleanSubject}`);
+        
+        if (!response.ok) {
+            throw new Error(`Failed to fetch tutors: ${response.status}`);
         }
-
-        const isMatch = await bcrypt.compare(password, admin.password_hash);
-        if (!isMatch) {
-            console.log('Invalid password for:', username);
-            return res.status(401).json({ error: 'Invalid username or password' });
+        
+        const tutors = await response.json();
+        console.log(`Found ${tutors.length} tutors for ${subject}`);
+        
+        if (tutors.length === 0) {
+            showNotification(`No tutors available for ${subject} at the moment.`, 'info');
+            return;
         }
-
-        const token = jwt.sign({ id: admin.id, username: admin.username }, JWT_SECRET, { expiresIn: '1h' });
-        console.log('Admin logged in:', username);
-        res.status(200).json({ token });
+        
+        showTutorModalWithData(subject, tutors);
+        
     } catch (error) {
-        console.error('Error during login:', error.message);
-        res.status(500).json({ error: 'Error during login' });
+        console.error('Error fetching tutors by subject:', error);
+        showNotification('Error loading tutors. Please try again.', 'error');
+        showTutorModalWithData(subject, []);
     }
-});
+}
 
 // ==============================================
-// ANNOUNCEMENTS ENDPOINTS
+// TUTOR MODAL FUNCTIONS
 // ==============================================
 
-// Get all announcements (public)
-app.get('/api/announcements', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT a.*, au.username AS author 
-             FROM announcements a 
-             LEFT JOIN admin_users au ON a.created_by = au.id 
-             ORDER BY a.created_at DESC`
-        );
-        console.log(`Found ${result.rows.length} announcements`);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching announcements:', error.message);
-        res.status(500).json({ error: 'Error fetching announcements' });
-    }
-});
-
-// Create announcement (protected)
-app.post('/api/announcements', authenticateToken, async (req, res) => {
-    try {
-        const { title, content } = req.body;
-        const created_by = req.user.id;
-        
-        console.log('Creating announcement:', { title, created_by });
-        
-        const result = await pool.query(
-            'INSERT INTO announcements (title, content, created_by) VALUES ($1, $2, $3) RETURNING *',
-            [title, content, created_by]
-        );
-        
-        console.log('Announcement created:', result.rows[0].id);
-        broadcastNotification('announcement');
-        
-        res.status(201).json({ 
-            message: 'Announcement created successfully', 
-            announcement: result.rows[0] 
+function initializeTutorModal() {
+    const modal = document.getElementById('tutorModal');
+    if (!modal) return;
+    
+    // Modal close button
+    const closeBtn = modal.querySelector('.close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function() {
+            modal.style.display = 'none';
+            clearModalSelection();
         });
-    } catch (error) {
-        console.error('Error creating announcement:', error.message);
-        res.status(500).json({ error: 'Error creating announcement' });
     }
-});
-
-// Update announcement (protected)
-app.put('/api/announcements/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { title, content } = req.body;
-        
-        const result = await pool.query(
-            'UPDATE announcements SET title = $1, content = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 RETURNING *',
-            [title, content, id]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Announcement not found' });
-        }
-        
-        res.status(200).json({ 
-            message: 'Announcement updated successfully', 
-            announcement: result.rows[0] 
+    
+    // Confirm booking button
+    const confirmBtn = document.getElementById('confirmBookingBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            confirmBooking();
         });
-    } catch (error) {
-        console.error('Error updating announcement:', error.message);
-        res.status(500).json({ error: 'Error updating announcement' });
     }
-});
+}
 
-// Delete announcement (protected)
-app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        
-        const result = await pool.query(
-            'DELETE FROM announcements WHERE id = $1 RETURNING *',
-            [id]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Announcement not found' });
-        }
-        
-        broadcastNotification('announcement_deleted');
-        res.status(200).json({ message: 'Announcement deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting announcement:', error.message);
-        res.status(500).json({ error: 'Error deleting announcement' });
+function showTutorModalWithData(subject, tutors) {
+    const modal = document.getElementById('tutorModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const tutorList = document.getElementById('tutor-list');
+    const scheduleInput = document.getElementById('schedule');
+    const confirmBtn = document.getElementById('confirmBookingBtn');
+    
+    if (!modal || !modalTitle || !tutorList) {
+        console.error('Modal elements not found');
+        return;
     }
-});
-
-// ==============================================
-// SUBJECTS ENDPOINTS
-// ==============================================
-
-// Get all subjects (public)
-app.get('/api/subjects', async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count
-            FROM subjects s
-            LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
-            WHERE s.is_available = TRUE
-            GROUP BY s.id
-            ORDER BY s.name
-        `);
-        console.log(`Found ${result.rows.length} subjects`);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching subjects:', error.message);
-        res.status(500).json({ error: 'Error fetching subjects' });
-    }
-});
-
-// Get all subjects for admin (protected)
-app.get('/api/admin/subjects', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count,
-                   STRING_AGG(DISTINCT t.name, ', ') as tutor_names
-            FROM subjects s
-            LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
-            LEFT JOIN tutors t ON ts.tutor_id = t.id
-            GROUP BY s.id
-            ORDER BY s.name
-        `);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching subjects for admin:', error.message);
-        res.status(500).json({ error: 'Error fetching subjects for admin' });
-    }
-});
-
-// Add new subject (protected)
-app.post('/api/admin/subjects', authenticateToken, async (req, res) => {
-    try {
-        const { name, description, icon } = req.body;
-        console.log('Adding subject:', { name, description, icon });
+    
+    // Set modal title
+    modalTitle.textContent = `Select Tutor for ${subject.charAt(0).toUpperCase() + subject.slice(1)}`;
+    
+    // Clear previous selection
+    clearModalSelection();
+    
+    // Store current subject
+    modal.dataset.currentSubject = subject;
+    
+    if (tutors.length === 0) {
+        tutorList.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <i class="fas fa-user-slash" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                <h3>No Tutors Available</h3>
+                <p>No tutors are currently available for ${subject}.</p>
+                <p>Please check back later or contact us.</p>
+            </div>
+        `;
         
-        const result = await pool.query(
-            'INSERT INTO subjects (name, description, icon) VALUES ($1, $2, $3) RETURNING *',
-            [name, description || '', icon || 'fas fa-book']
-        );
+        if (scheduleInput) scheduleInput.style.display = 'none';
+        if (confirmBtn) confirmBtn.style.display = 'none';
+    } else {
+        // Populate tutor list
+        tutorList.innerHTML = tutors.map(tutor => `
+            <div class="tutor-card" data-tutor-id="${tutor.id}">
+                <img src="${tutor.image || 'https://via.placeholder.com/60?text=Tutor'}" 
+                     alt="${tutor.name}"
+                     onerror="this.src='https://via.placeholder.com/60?text=Tutor'">
+                <div class="tutor-info">
+                    <h4>${escapeHtml(tutor.name)}</h4>
+                    <p>${escapeHtml(tutor.experience || 'Experienced tutor')}</p>
+                    <p style="color: #f39c12;">
+                        ${renderStars(tutor.rating || 0)} 
+                        <strong>${tutor.rating || 'N/A'}</strong>
+                    </p>
+                    <small style="color: #666;">
+                        Subjects: ${Array.isArray(tutor.subjects) ? tutor.subjects.join(', ') : tutor.subjects}
+                    </small>
+                </div>
+                <div class="tutor-rating">
+                    <button class="select-tutor-btn btn" 
+                            data-tutor-id="${tutor.id}"
+                            data-tutor-name="${escapeHtml(tutor.name)}"
+                            style="padding: 8px 15px; font-size: 0.9rem;">
+                        <i class="fas fa-check"></i> Select
+                    </button>
+                </div>
+            </div>
+        `).join('');
         
-        broadcastNotification('subject_added');
-        res.status(201).json({ 
-            message: 'Subject added successfully', 
-            subject: result.rows[0] 
+        // Attach event listeners to tutor select buttons
+        setTimeout(() => {
+            document.querySelectorAll('.select-tutor-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tutorId = this.dataset.tutorId;
+                    const tutorName = this.dataset.tutorName;
+                    
+                    console.log('Selected tutor:', tutorName, 'ID:', tutorId);
+                    
+                    // Store selected tutor
+                    modal.dataset.selectedTutorId = tutorId;
+                    modal.dataset.selectedTutorName = tutorName;
+                    
+                    // Show schedule input and confirm button
+                    if (scheduleInput) {
+                        scheduleInput.style.display = 'block';
+                        scheduleInput.min = new Date().toISOString().slice(0, 16);
+                    }
+                    if (confirmBtn) confirmBtn.style.display = 'block';
+                    
+                    // Highlight selected tutor
+                    document.querySelectorAll('.tutor-card').forEach(card => {
+                        card.style.background = '';
+                    });
+                    this.closest('.tutor-card').style.background = '#e8f5e9';
+                });
+            });
+        }, 100);
+        
+        if (scheduleInput) scheduleInput.style.display = 'none';
+        if (confirmBtn) confirmBtn.style.display = 'none';
+    }
+    
+    // Show modal
+    modal.style.display = 'block';
+}
+
+function clearModalSelection() {
+    const modal = document.getElementById('tutorModal');
+    if (modal) {
+        delete modal.dataset.selectedTutorId;
+        delete modal.dataset.selectedTutorName;
+        delete modal.dataset.currentSubject;
+    }
+    const scheduleInput = document.getElementById('schedule');
+    if (scheduleInput) {
+        scheduleInput.value = '';
+        scheduleInput.style.display = 'none';
+    }
+    const confirmBtn = document.getElementById('confirmBookingBtn');
+    if (confirmBtn) confirmBtn.style.display = 'none';
+}
+
+async function confirmBooking() {
+    const modal = document.getElementById('tutorModal');
+    const tutorId = modal.dataset.selectedTutorId;
+    const tutorName = modal.dataset.selectedTutorName;
+    const subject = modal.dataset.currentSubject;
+    const scheduleInput = document.getElementById('schedule');
+    
+    if (!tutorId || !subject) {
+        showNotification('Please select a tutor first', 'error');
+        return;
+    }
+    
+    if (!scheduleInput || !scheduleInput.value) {
+        showNotification('Please select a date and time for your session', 'error');
+        return;
+    }
+    
+    const userNumber = prompt('Please enter your phone number for confirmation:');
+    if (!userNumber) {
+        showNotification('Phone number is required for booking', 'error');
+        return;
+    }
+    
+    if (userNumber.length < 8) {
+        showNotification('Please enter a valid phone number', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/bookings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                tutorId: parseInt(tutorId),
+                subject: subject,
+                userNumber: userNumber,
+                schedule: scheduleInput.value
+            })
         });
-    } catch (error) {
-        console.error('Error adding subject:', error.message);
-        if (error.code === '23505') { // Unique violation
-            res.status(400).json({ error: 'Subject already exists' });
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification(`Booking confirmed with ${tutorName}! We'll contact you soon.`, 'success');
+            modal.style.display = 'none';
+            clearModalSelection();
         } else {
-            res.status(500).json({ error: 'Error adding subject' });
+            showNotification(result.error || 'Booking failed. Please try again.', 'error');
         }
-    }
-});
-
-// Get assignments for a subject (protected)
-app.get('/api/admin/subjects/:subjectId/tutors', authenticateToken, async (req, res) => {
-    try {
-        const { subjectId } = req.params;
-        const result = await pool.query(`
-            SELECT t.*
-            FROM tutors t
-            JOIN tutor_subjects ts ON t.id = ts.tutor_id
-            WHERE ts.subject_id = $1
-            ORDER BY t.name
-        `, [subjectId]);
-        res.status(200).json(result.rows);
     } catch (error) {
-        console.error('Error fetching subject assignments:', error.message);
-        res.status(500).json({ error: 'Error fetching subject assignments' });
+        console.error('Error confirming booking:', error);
+        showNotification('Network error. Please check your connection and try again.', 'error');
     }
-});
-
-// Clear all assignments for a subject (protected)
-app.delete('/api/admin/subjects/:subjectId/assignments', authenticateToken, async (req, res) => {
-    try {
-        const { subjectId } = req.params;
-        const result = await pool.query(
-            'DELETE FROM tutor_subjects WHERE subject_id = $1 RETURNING *',
-            [subjectId]
-        );
-        res.status(200).json({ 
-            message: 'Assignments cleared successfully',
-            count: result.rows.length
-        });
-    } catch (error) {
-        console.error('Error clearing assignments:', error.message);
-        res.status(500).json({ error: 'Error clearing assignments' });
-    }
-});
-
-// Update subject status (protected)
-app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, res) => {
-    try {
-        const { subjectId } = req.params;
-        const { is_available } = req.body;
-        
-        const result = await pool.query(
-            'UPDATE subjects SET is_available = $1 WHERE id = $2 RETURNING *',
-            [is_available, subjectId]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Subject not found' });
-        }
-        
-        res.status(200).json({ 
-            message: 'Subject status updated successfully',
-            subject: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Error updating subject status:', error.message);
-        res.status(500).json({ error: 'Error updating subject status' });
-    }
-});
-
-// Assign tutor to subject (protected)
-app.post('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, async (req, res) => {
-    try {
-        const { tutorId, subjectId } = req.params;
-        
-        const result = await pool.query(
-            'INSERT INTO tutor_subjects (tutor_id, subject_id) VALUES ($1, $2) RETURNING *',
-            [tutorId, subjectId]
-        );
-        
-        res.status(201).json({ 
-            message: 'Tutor assigned to subject successfully'
-        });
-    } catch (error) {
-        console.error('Error assigning tutor to subject:', error.message);
-        res.status(500).json({ error: 'Error assigning tutor to subject' });
-    }
-});
-
-// Remove tutor from subject (protected)
-app.delete('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, async (req, res) => {
-    try {
-        const { tutorId, subjectId } = req.params;
-        
-        const result = await pool.query(
-            'DELETE FROM tutor_subjects WHERE tutor_id = $1 AND subject_id = $2 RETURNING *',
-            [tutorId, subjectId]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Assignment not found' });
-        }
-        
-        res.status(200).json({ 
-            message: 'Tutor removed from subject successfully' 
-        });
-    } catch (error) {
-        console.error('Error removing tutor from subject:', error.message);
-        res.status(500).json({ error: 'Error removing tutor from subject' });
-    }
-});
+}
 
 // ==============================================
-// TUTORS ENDPOINTS
+// CALENDAR & COUNTDOWN FUNCTIONS
 // ==============================================
 
-// Get Tutors by Subject (public)
-app.get('/api/tutors/:subject', async (req, res) => {
-    try {
-        const subject = req.params.subject.toLowerCase();
-        console.log('Fetching tutors for subject:', subject);
-        
-        // Using PostgreSQL ANY() function for array search
-        const result = await pool.query(
-            'SELECT * FROM tutors WHERE $1 = ANY(subjects) AND is_active = TRUE ORDER BY rating DESC',
-            [subject]
-        );
-        
-        console.log(`Found ${result.rows.length} tutors for ${subject}`);
-        res.status(200).json(result.rows);
-        
-    } catch (error) {
-        console.error('Error fetching tutors:', error.message);
-        res.status(500).json({ error: 'Error fetching tutors' });
-    }
-});
-
-// Get all tutors for admin (protected)
-app.get('/api/admin/tutors', authenticateToken, async (req, res) => {
-    try {
-        console.log('Admin fetching all tutors...');
-        const result = await pool.query(
-            'SELECT * FROM tutors ORDER BY created_at DESC'
-        );
-        console.log(`Found ${result.rows.length} tutors`);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching tutors for admin:', error.message);
-        res.status(500).json({ error: 'Error fetching tutors for admin' });
-    }
-});
-
-// Add new tutor (protected)
-app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
-    try {
-        const { name, subjects, rating, experience, image, bio } = req.body;
-        console.log('Adding new tutor:', { name, subjects, rating, experience });
-        
-        // Format subjects as PostgreSQL array
-        let subjectsArray = subjects;
-        if (Array.isArray(subjects)) {
-            subjectsArray = `{${subjects.map(s => s.trim().toLowerCase()).join(',')}}`;
-        } else if (typeof subjects === 'string') {
-            subjectsArray = `{${subjects.split(',').map(s => s.trim().toLowerCase()).join(',')}}`;
-        }
-        
-        console.log('Formatted subjects:', subjectsArray);
-        
-        const result = await pool.query(
-            `INSERT INTO tutors (name, subjects, rating, experience, image, bio, is_active) 
-             VALUES ($1, $2, $3, $4, $5, $6, $7) 
-             RETURNING *`,
-            [name, subjectsArray, rating, experience, image, bio || '', true]
-        );
-        
-        console.log('Tutor added successfully. ID:', result.rows[0].id);
-        broadcastNotification('tutor_added');
-        
-        res.status(201).json({ 
-            message: 'Tutor added successfully', 
-            tutor: result.rows[0] 
-        });
-        
-    } catch (error) {
-        console.error('Error adding tutor:', error.message);
-        res.status(500).json({ 
-            error: 'Error adding tutor', 
-            details: error.message
+function initializeCalendar() {
+    updateCalendar();
+    
+    const prevBtn = document.getElementById('prev-month');
+    const nextBtn = document.getElementById('next-month');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() - 1);
+            updateCalendar();
         });
     }
-});
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            updateCalendar();
+        });
+    }
+}
 
-// Update tutor (protected)
-app.put('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
+function updateCalendar() {
+    const monthYear = document.getElementById('current-month');
+    const daysContainer = document.getElementById('calendar-days');
+    
+    if (!monthYear || !daysContainer) return;
+    
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    
+    monthYear.textContent = `${currentDate.toLocaleString('default', { month: 'long' })} ${year}`;
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const daysInMonth = lastDay.getDate();
+    const startingDay = firstDay.getDay();
+    
+    daysContainer.innerHTML = '';
+    
+    // Previous month days
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDay - 1; i >= 0; i--) {
+        const day = document.createElement('div');
+        day.className = 'prev-month';
+        day.textContent = prevMonthLastDay - i;
+        daysContainer.appendChild(day);
+    }
+    
+    // Current month days
+    const today = new Date();
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dayElement = document.createElement('div');
+        dayElement.textContent = day;
+        
+        const currentDateObj = new Date(year, month, day);
+        if (currentDateObj.toDateString() === today.toDateString()) {
+            dayElement.classList.add('today');
+        }
+        
+        if (month === 5 && day === 15) { // June 15
+            dayElement.classList.add('exam-day');
+        }
+        
+        daysContainer.appendChild(dayElement);
+    }
+    
+    // Update exam list
+    updateExamList();
+}
+
+function updateExamList() {
+    const examList = document.getElementById('exam-list');
+    if (!examList) return;
+    
+    examList.innerHTML = `
+        <li>Mathematics - June 15, 2025</li>
+        <li>Physics - June 16, 2025</li>
+        <li>Chemistry - June 17, 2025</li>
+        <li>Biology - June 18, 2025</li>
+        <li>English - June 19, 2025</li>
+    `;
+}
+
+function startCountdown() {
+    const nextExamDate = document.getElementById('next-exam-date');
+    if (nextExamDate) {
+        nextExamDate.textContent = selectedExamDate.toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        });
+    }
+    
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+}
+
+function updateCountdown() {
+    const now = new Date();
+    const timeDiff = selectedExamDate.getTime() - now.getTime();
+    
+    if (timeDiff <= 0) {
+        selectedExamDate.setFullYear(selectedExamDate.getFullYear() + 1);
+        startCountdown();
+        return;
+    }
+    
+    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+    
+    const daysEl = document.getElementById('days');
+    const hoursEl = document.getElementById('hours');
+    const minutesEl = document.getElementById('minutes');
+    const secondsEl = document.getElementById('seconds');
+    
+    if (daysEl) daysEl.textContent = days.toString().padStart(2, '0');
+    if (hoursEl) hoursEl.textContent = hours.toString().padStart(2, '0');
+    if (minutesEl) minutesEl.textContent = minutes.toString().padStart(2, '0');
+    if (secondsEl) secondsEl.textContent = seconds.toString().padStart(2, '0');
+}
+
+// ==============================================
+// WEBSOCKET FUNCTIONS
+// ==============================================
+
+function setupAnnouncementWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onopen = function() {
+        console.log('WebSocket connected for announcements');
+    };
+    
+    ws.onmessage = function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            console.log('WebSocket message:', data);
+            
+            if (data.type === 'announcement' || data.type === 'announcement_deleted') {
+                loadAnnouncements(); // Refresh announcements
+            }
+            
+            if (data.isBrowserNotification && 'Notification' in window && Notification.permission === 'granted') {
+                new Notification('LearnHub Update', { body: data.message });
+            }
+        } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+        }
+    };
+    
+    ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+    
+    ws.onclose = function() {
+        console.log('WebSocket disconnected');
+        // Try to reconnect after 5 seconds
+        setTimeout(setupAnnouncementWebSocket, 5000);
+    };
+}
+
+// ==============================================
+// UTILITY FUNCTIONS
+// ==============================================
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function renderStars(rating) {
+    let stars = '';
+    const numericRating = parseFloat(rating) || 0;
+    
+    for (let i = 1; i <= 5; i++) {
+        if (i <= Math.floor(numericRating)) {
+            stars += '<i class="fas fa-star"></i>';
+        } else if (i === Math.ceil(numericRating) && numericRating % 1 > 0) {
+            stars += '<i class="fas fa-star-half-alt"></i>';
+        } else {
+            stars += '<i class="far fa-star"></i>';
+        }
+    }
+    return stars;
+}
+
+function formatDate(dateString) {
     try {
-        const { id } = req.params;
-        const { name, subjects, rating, experience, image, bio, is_active } = req.body;
-        
-        // Format subjects if provided
-        let subjectsArray = subjects;
-        if (subjects && Array.isArray(subjects)) {
-            subjectsArray = `{${subjects.map(s => s.trim().toLowerCase()).join(',')}}`;
-        }
-        
-        const result = await pool.query(
-            `UPDATE tutors 
-             SET name = COALESCE($1, name),
-                 subjects = COALESCE($2, subjects),
-                 rating = COALESCE($3, rating),
-                 experience = COALESCE($4, experience),
-                 image = COALESCE($5, image),
-                 bio = COALESCE($6, bio),
-                 is_active = COALESCE($7, is_active)
-             WHERE id = $8 
-             RETURNING *`,
-            [name, subjectsArray, rating, experience, image, bio, is_active, id]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Tutor not found' });
-        }
-        
-        res.status(200).json({ 
-            message: 'Tutor updated successfully', 
-            tutor: result.rows[0] 
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
         });
     } catch (error) {
-        console.error('Error updating tutor:', error.message);
-        res.status(500).json({ error: 'Error updating tutor' });
+        return dateString;
     }
-});
+}
 
-// Delete tutor (protected)
-app.delete('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { deletePassword } = req.body;
-        
-        // Verify delete password
-        const isMatch = await bcrypt.compare(deletePassword, DELETE_PASSWORD_HASH);
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid delete password' });
+function showNotification(message, type = 'info') {
+    // Remove existing notifications
+    const existing = document.querySelector('.notification');
+    if (existing) existing.remove();
+    
+    // Create notification
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.style.cssText = `
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        padding: 15px 20px;
+        border-radius: 8px;
+        color: white;
+        z-index: 1000;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    // Set color based on type
+    if (type === 'success') {
+        notification.style.background = '#2ecc71';
+    } else if (type === 'error') {
+        notification.style.background = '#e74c3c';
+    } else if (type === 'warning') {
+        notification.style.background = '#f39c12';
+    } else {
+        notification.style.background = '#3498db';
+    }
+    
+    notification.innerHTML = `
+        ${message}
+        <span style="margin-left: 10px; cursor: pointer; font-weight: bold;" 
+              onclick="this.parentElement.remove()">&times;</span>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
         }
-        
-        // Check if tutor exists
-        const tutorCheck = await pool.query('SELECT id FROM tutors WHERE id = $1', [id]);
-        if (tutorCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Tutor not found' });
+    }, 5000);
+}
+
+// Add CSS animation if not exists
+if (!document.querySelector('#notification-styles')) {
+    const style = document.createElement('style');
+    style.id = 'notification-styles';
+    style.textContent = `
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
-        
-        // Delete tutor
-        const result = await pool.query('DELETE FROM tutors WHERE id = $1 RETURNING *', [id]);
-        
-        broadcastNotification('tutor_deleted');
-        res.status(200).json({ 
-            message: 'Tutor deleted successfully', 
-            tutor: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error deleting tutor:', error.message);
-        res.status(500).json({ error: 'Error deleting tutor' });
-    }
-});
+    `;
+    document.head.appendChild(style);
+}
 
-// ==============================================
-// CONTACT ENDPOINTS
-// ==============================================
-
-// Contact Form Endpoint
-app.post('/api/contact', async (req, res) => {
-    try {
-        const { name, number, message } = req.body;
-        console.log('Received contact form:', { name, number });
-        
-        const result = await pool.query(
-            'INSERT INTO contacts (name, number, message) VALUES ($1, $2, $3) RETURNING *',
-            [name, number, message]
-        );
-        
-        console.log('Contact saved:', result.rows[0].id);
-        broadcastNotification('contact');
-        
-        res.status(200).json({ 
-            message: 'Message saved successfully', 
-            data: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error saving message:', error.message);
-        res.status(500).json({ error: 'Error saving message' });
-    }
-});
-
-// Get All Contact Messages (protected)
-app.get('/api/contacts', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query('SELECT * FROM contacts ORDER BY created_at DESC');
-        console.log(`Found ${result.rows.length} contacts`);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching contacts:', error.message);
-        res.status(500).json({ error: 'Error fetching contacts' });
-    }
-});
-
-// Delete Contact (protected)
-app.delete('/api/contacts/:number', authenticateToken, async (req, res) => {
-    try {
-        const { number } = req.params;
-        console.log('Attempting to delete contact:', { number });
-        
-        const result = await pool.query('DELETE FROM contacts WHERE number = $1 RETURNING *', [number]);
-        
-        if (result.rows.length === 0) {
-            console.log('Contact not found:', number);
-            return res.status(404).json({ error: 'Contact not found' });
-        }
-        
-        console.log('Contact deleted:', result.rows[0].id);
-        broadcastNotification('contact_deleted');
-        
-        res.status(200).json({ message: 'Contact deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting contact:', error.message);
-        res.status(500).json({ error: 'Error deleting contact' });
-    }
-});
-
-// ==============================================
-// BOOKINGS ENDPOINTS
-// ==============================================
-
-// Create Booking
-app.post('/api/bookings', async (req, res) => {
-    try {
-        const { tutorId, subject, userNumber, schedule } = req.body;
-        console.log('Received booking:', { tutorId, subject, userNumber, schedule });
-        
-        const result = await pool.query(
-            'INSERT INTO bookings (tutor_id, subject, user_number, schedule) VALUES ($1, $2, $3, $4) RETURNING *',
-            [tutorId, subject, userNumber, schedule]
-        );
-        
-        console.log('Booking created:', result.rows[0].id);
-        broadcastNotification('booking');
-        
-        res.status(200).json({ 
-            message: 'Booking created successfully', 
-            data: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error creating booking:', error.message);
-        res.status(500).json({ error: 'Error creating booking' });
-    }
-});
-
-// Get All Bookings (protected)
-app.get('/api/bookings', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            `SELECT b.*, t.name AS tutor_name 
-             FROM bookings b 
-             LEFT JOIN tutors t ON b.tutor_id = t.id 
-             ORDER BY b.created_at DESC`
-        );
-        console.log(`Found ${result.rows.length} bookings`);
-        res.status(200).json(result.rows || []);
-    } catch (error) {
-        console.error('Error fetching bookings:', error.message);
-        res.status(500).json({ error: 'Error fetching bookings', details: error.message });
-    }
-});
-
-// Delete Booking (protected)
-app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        console.log('Attempting to delete booking:', { id });
-        
-        const result = await pool.query('DELETE FROM bookings WHERE id = $1 RETURNING *', [id]);
-        
-        if (result.rows.length === 0) {
-            console.log('Booking not found:', id);
-            return res.status(404).json({ error: 'Booking not found' });
-        }
-        
-        console.log('Booking deleted:', result.rows[0].id);
-        broadcastNotification('booking_deleted');
-        
-        res.status(200).json({ message: 'Booking deleted successfully' });
-    } catch (error) {
-        console.error('Error deleting booking:', error.message);
-        res.status(500).json({ error: 'Error deleting booking' });
-    }
-});
-
-// ==============================================
-// ACTIVE TUTORS ENDPOINT
-// ==============================================
-
-// Get active tutors (public)
-app.get('/api/tutors/active', async (req, res) => {
-    try {
-        const result = await pool.query(`
-            SELECT t.*, 
-                   ARRAY_AGG(DISTINCT s.name) as subject_names
-            FROM tutors t
-            LEFT JOIN tutor_subjects ts ON t.id = ts.tutor_id
-            LEFT JOIN subjects s ON ts.subject_id = s.id
-            WHERE t.is_active = TRUE
-            GROUP BY t.id
-            ORDER BY t.rating DESC, t.name
-        `);
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching active tutors:', error.message);
-        res.status(500).json({ error: 'Error fetching active tutors' });
-    }
-});
-
-// ==============================================
-// SERVER START
-// ==============================================
-
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-    console.log(`WebSocket server running`);
-    console.log(`Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
-});
+// Make functions globally available
+window.loadAnnouncements = loadAnnouncements;
+window.loadSubjects = loadSubjects;
+window.fetchTutorsBySubject = fetchTutorsBySubject;
+window.confirmBooking = confirmBooking;
