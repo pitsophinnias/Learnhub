@@ -323,7 +323,9 @@ app.delete('/api/bookings/:id', authenticateToken, async (req, res) => {
     }
 });
 
-// Get all announcements
+// Add these endpoints to your server.js file:
+
+// Get all announcements (public endpoint - no auth required)
 app.get('/api/announcements', async (req, res) => {
     try {
         const result = await pool.query(
@@ -406,99 +408,4 @@ app.delete('/api/announcements/:id', authenticateToken, async (req, res) => {
         res.status(500).json({ error: 'Error deleting announcement' });
     }
 });
-
-// Get all tutors (for admin)
-app.get('/api/admin/tutors', authenticateToken, async (req, res) => {
-    try {
-        const result = await pool.query(
-            'SELECT * FROM tutors ORDER BY created_at DESC'
-        );
-        res.status(200).json(result.rows);
-    } catch (error) {
-        console.error('Error fetching tutors:', error.message);
-        res.status(500).json({ error: 'Error fetching tutors' });
-    }
-});
-
-// Add new tutor (Protected)
-app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
-    try {
-        const { name, subjects, rating, experience, image, bio } = req.body;
-        
-        const result = await pool.query(
-            'INSERT INTO tutors (name, subjects, rating, experience, image, bio) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-            [name, subjects, rating, experience, image, bio]
-        );
-        
-        broadcastNotification('tutor_added');
-        res.status(201).json({ 
-            message: 'Tutor added successfully', 
-            tutor: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error adding tutor:', error.message);
-        res.status(500).json({ error: 'Error adding tutor' });
-    }
-});
-
-// Update tutor (Protected)
-app.put('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, subjects, rating, experience, image, bio, is_active } = req.body;
-        
-        const result = await pool.query(
-            `UPDATE tutors 
-             SET name = $1, subjects = $2, rating = $3, experience = $4, 
-                 image = $5, bio = $6, is_active = $7 
-             WHERE id = $8 RETURNING *`,
-            [name, subjects, rating, experience, image, bio, is_active, id]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Tutor not found' });
-        }
-        
-        res.status(200).json({ 
-            message: 'Tutor updated successfully', 
-            tutor: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error updating tutor:', error.message);
-        res.status(500).json({ error: 'Error updating tutor' });
-    }
-});
-
-// Delete tutor (Protected - with password verification)
-app.delete('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { deletePassword } = req.body;
-        
-        // Verify delete password
-        const isMatch = await bcrypt.compare(deletePassword, DELETE_PASSWORD_HASH);
-        if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid delete password' });
-        }
-        
-        // Check if tutor exists
-        const tutorCheck = await pool.query('SELECT id FROM tutors WHERE id = $1', [id]);
-        if (tutorCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Tutor not found' });
-        }
-        
-        // Delete tutor (cascade will delete related admin_users and bookings)
-        const result = await pool.query('DELETE FROM tutors WHERE id = $1 RETURNING *', [id]);
-        
-        broadcastNotification('tutor_deleted');
-        res.status(200).json({ 
-            message: 'Tutor deleted successfully', 
-            tutor: result.rows[0] 
-        });
-    } catch (error) {
-        console.error('Error deleting tutor:', error.message);
-        res.status(500).json({ error: 'Error deleting tutor' });
-    }
-});
-
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

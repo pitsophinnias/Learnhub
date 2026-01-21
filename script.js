@@ -426,3 +426,102 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+// Load announcements from server
+async function loadAnnouncements() {
+    try {
+        const response = await fetch('/api/announcements');
+        const announcements = await response.json();
+        
+        const container = document.getElementById('announcements-container');
+        
+        if (!announcements || announcements.length === 0) {
+            container.innerHTML = `
+                <div class="announcement-card">
+                    <h3>No Announcements Yet</h3>
+                    <p class="announcement-date">Check back later for updates</p>
+                    <p>Our team will post important updates here soon.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = announcements.map(announcement => `
+            <div class="announcement-card">
+                <h3>${escapeHtml(announcement.title)}</h3>
+                <p class="announcement-date">
+                    <i class="far fa-calendar"></i> ${formatAnnouncementDate(announcement.created_at)}
+                    ${announcement.author ? ` • <i class="fas fa-user"></i> ${escapeHtml(announcement.author)}` : ''}
+                </p>
+                <p>${escapeHtml(announcement.content)}</p>
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Error loading announcements:', error);
+        const container = document.getElementById('announcements-container');
+        container.innerHTML = `
+            <div class="announcement-card">
+                <h3>Error Loading Announcements</h3>
+                <p>Please check back later.</p>
+            </div>
+        `;
+    }
+}
+
+// Format date for announcements
+function formatAnnouncementDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Call this function when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // ... your existing code ...
+    loadAnnouncements(); // Add this line
+    
+    // Also add WebSocket for real-time updates
+    setupAnnouncementWebSocket();
+});
+
+// WebSocket for real-time announcement updates
+function setupAnnouncementWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    
+    const ws = new WebSocket(wsUrl);
+    
+    ws.onopen = function() {
+        console.log('Connected to announcements WebSocket');
+    };
+    
+    ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'announcement' || data.type === 'announcement_deleted') {
+            loadAnnouncements(); // Refresh announcements
+        }
+    };
+    
+    ws.onerror = function(error) {
+        console.error('WebSocket error:', error);
+    };
+    
+    ws.onclose = function() {
+        console.log('WebSocket disconnected');
+        // Try to reconnect after 5 seconds
+        setTimeout(setupAnnouncementWebSocket, 5000);
+    };
+}
