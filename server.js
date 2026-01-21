@@ -469,6 +469,37 @@ app.get('/api/admin/subjects', authenticateToken, async (req, res) => {
     }
 });
 
+// Add new tutor (Protected)
+app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
+    try {
+        const { name, subjects, rating, experience, image, bio, is_active = true } = req.body;
+        console.log('Adding new tutor:', { name, subjects });
+        
+        // Convert subjects array to PostgreSQL array format if needed
+        let subjectsArray = subjects;
+        if (Array.isArray(subjects)) {
+            subjectsArray = `{${subjects.join(',')}}`;
+        }
+        
+        const result = await pool.query(
+            `INSERT INTO tutors (name, subjects, rating, experience, image, bio, is_active) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7) 
+             RETURNING *`,
+            [name, subjectsArray, rating, experience, image, bio || '', is_active]
+        );
+        
+        console.log('Tutor added successfully:', result.rows[0].id);
+        broadcastNotification('tutor_added');
+        res.status(201).json({ 
+            message: 'Tutor added successfully', 
+            tutor: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error adding tutor:', error.message);
+        res.status(500).json({ error: 'Error adding tutor', details: error.message });
+    }
+});
+
 // Add new subject (protected)
 app.post('/api/admin/subjects', authenticateToken, async (req, res) => {
     try {

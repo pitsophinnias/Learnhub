@@ -177,48 +177,58 @@ async function openAssignModal(subjectId, subjectName) {
 // Load available tutors
 async function loadAvailableTutors() {
     try {
+        console.log('Loading available tutors for assignment...');
         const token = localStorage.getItem('adminToken');
         
-        // ADD CACHE BUSTING
-        const url = `${API_BASE}/api/admin/tutors?t=${Date.now()}`;
+        if (!token) {
+            console.error('No token found');
+            window.location.href = 'admin_login.html';
+            return;
+        }
+        
+        // Debug: Log the token (first few chars)
+        console.log('Token exists:', token.substring(0, 20) + '...');
+        
+        const url = `${API_BASE}/api/admin/tutors?nocache=${Date.now()}`;
+        console.log('Fetching from:', url);
         
         const response = await fetch(url, {
             headers: { 
                 'Authorization': `Bearer ${token}`,
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache'
+                'Cache-Control': 'no-cache'
             }
         });
         
+        console.log('Response status:', response.status);
+        
         if (response.status === 401) {
+            console.log('Unauthorized, redirecting to login');
             localStorage.removeItem('adminToken');
             window.location.href = 'admin_login.html';
             return;
         }
         
-        if (response.ok) {
-            allTutors = await response.json();
-            console.log(`Loaded ${allTutors.length} tutors`); // Debug
-            
-            // Check if we need to show a message about new tutors
-            const lastUpdate = localStorage.getItem('tutorsLastSeen');
-            const tutorsUpdated = localStorage.getItem('tutorsUpdated');
-            
-            if (tutorsUpdated && (!lastUpdate || parseInt(tutorsUpdated) > parseInt(lastUpdate))) {
-                showNotification('New tutors available. Refreshing list...', 'info');
-                localStorage.setItem('tutorsLastSeen', Date.now().toString());
-            }
-        } else {
-            console.error('Failed to load tutors:', response.status);
-            allTutors = [];
+        if (!response.ok) {
+            console.error('API error:', response.status, response.statusText);
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
+            throw new Error(`API error: ${response.status}`);
         }
+        
+        const tutors = await response.json();
+        console.log(`Received ${tutors.length} tutors:`, tutors.map(t => ({id: t.id, name: t.name})));
+        
+        allTutors = tutors;
+        
+        // Update the UI
+        updateAvailableTutorsList();
+        
     } catch (error) {
         console.error('Error loading tutors:', error);
+        showNotification('Error loading tutors: ' + error.message, 'error');
         allTutors = [];
-        showNotification('Error loading tutors list', 'error');
     }
 }
-
 
 // Load current assignments for this subject
 async function loadCurrentAssignments() {
