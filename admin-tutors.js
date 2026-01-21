@@ -55,213 +55,11 @@ async function loadTutors() {
     }
 }
 
-// Load available subjects for assignment
-async function loadAvailableSubjects() {
-    try {
-        const token = localStorage.getItem('adminToken');
-        const response = await fetch(`${API_BASE}/api/admin/subjects`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (response.ok) {
-            const subjects = await response.json();
-            populateSubjectSelection(subjects);
-        }
-    } catch (error) {
-        console.error('Error loading subjects:', error);
-        showNotification('Error loading subjects', 'error');
-    }
-}
-
-// Populate subject selection
-function populateSubjectSelection(subjects) {
-    const container = document.getElementById('subjectSelection');
-    if (!container) return;
-    
-    const availableSubjects = subjects.filter(subject => subject.is_available !== false);
-    
-    if (availableSubjects.length === 0) {
-        container.innerHTML = `
-            <div style="text-align: center; padding: 10px; color: #666;">
-                <i class="fas fa-exclamation-triangle"></i> No subjects available
-            </div>
-        `;
-        return;
-    }
-    
-    container.innerHTML = availableSubjects.map(subject => `
-        <div style="margin-bottom: 8px;">
-            <input type="checkbox" 
-                   id="subject_${subject.id}" 
-                   value="${subject.id}"
-                   class="subject-checkbox">
-            <label for="subject_${subject.id}" style="margin-left: 5px;">
-                <i class="${subject.icon || 'fas fa-book'}"></i> ${escapeHtml(subject.name)}
-            </label>
-        </div>
-    `).join('');
-}
-
-// Update the setupForm function to handle subject assignment
-function setupForm() {
-    const form = document.getElementById('tutorForm');
-    
-    // Load subjects when form is shown
-    loadAvailableSubjects();
-    
-    form.addEventListener('submit', async function(e) {
-        e.preventDefault();
-        
-        const name = document.getElementById('tutorName').value.trim();
-        const rating = parseFloat(document.getElementById('tutorRating').value);
-        const experience = document.getElementById('tutorExperience').value.trim();
-        const image = document.getElementById('tutorImage').value.trim();
-        const bio = document.getElementById('tutorBio').value.trim();
-        
-        // Get selected subjects
-        const selectedSubjects = [];
-        document.querySelectorAll('.subject-checkbox:checked').forEach(checkbox => {
-            selectedSubjects.push(checkbox.value);
-        });
-        
-        // Validate inputs
-        if (!name || !rating || !experience || !image) {
-            showNotification('Please fill in all required fields', 'error');
-            return;
-        }
-        
-        if (rating < 1 || rating > 5) {
-            showNotification('Rating must be between 1 and 5', 'error');
-            return;
-        }
-        
-        if (selectedSubjects.length === 0) {
-            showNotification('Please select at least one subject for the tutor', 'error');
-            return;
-        }
-        
-        try {
-            const token = localStorage.getItem('adminToken');
-            if (!token) {
-                window.location.href = 'admin_login.html';
-                return;
-            }
-            
-            // First, create the tutor
-            const createResponse = await fetch(`${API_BASE}/api/admin/tutors`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    name,
-                    rating,
-                    experience,
-                    image,
-                    bio,
-                    subjects: selectedSubjects // Pass as array for subject IDs
-                })
-            });
-            
-            console.log('Create tutor response:', createResponse.status);
-            
-            if (createResponse.status === 401) {
-                localStorage.removeItem('adminToken');
-                window.location.href = 'admin_login.html';
-                return;
-            }
-            
-            const createResult = await createResponse.json();
-            
-            if (createResponse.ok) {
-                const tutorId = createResult.tutor.id;
-                
-                // Now assign subjects to the tutor
-                const assignments = await assignSubjectsToTutor(tutorId, selectedSubjects, token);
-                
-                showNotification(
-                    `Tutor added successfully! Assigned to ${assignments.successCount} subject(s).`,
-                    'success'
-                );
-                
-                // Reset form
-                form.reset();
-                document.querySelectorAll('.subject-checkbox').forEach(cb => cb.checked = false);
-                
-                // Refresh tutors list
-                await loadTutors();
-                
-                // Broadcast update
-                broadcastNotification('tutor_added');
-                
-            } else {
-                showNotification(createResult.error || 'Error adding tutor', 'error');
-            }
-        } catch (error) {
-            console.error('Error adding tutor:', error);
-            showNotification('Network error adding tutor', 'error');
-        }
-    });
-}
-
-// Function to assign subjects to tutor
-async function assignSubjectsToTutor(tutorId, subjectIds, token) {
-    const results = {
-        successCount: 0,
-        errorCount: 0,
-        errors: []
-    };
-    
-    for (const subjectId of subjectIds) {
-        try {
-            const response = await fetch(`${API_BASE}/api/admin/tutors/${tutorId}/subjects/${subjectId}`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                results.successCount++;
-            } else {
-                results.errorCount++;
-                const error = await response.json();
-                results.errors.push({ subjectId, error: error.error });
-            }
-        } catch (error) {
-            results.errorCount++;
-            results.errors.push({ subjectId, error: error.message });
-        }
-    }
-    
-    return results;
-}
-
-// Add CSS for subject selection
-const subjectStyle = document.createElement('style');
-subjectStyle.textContent = `
-    .subject-checkbox {
-        margin-right: 5px;
-    }
-    
-    .subject-checkbox:checked + label {
-        font-weight: bold;
-        color: #3498db;
-    }
-    
-    .subject-checkbox:checked + label i {
-        color: #3498db;
-    }
-`;
-document.head.appendChild(subjectStyle);
-
 // Display tutors in table
 function displayTutors(tutors) {
     const tbody = document.getElementById('tutorsList');
     
-    if (tutors.length === 0) {
+    if (!tutors || tutors.length === 0) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; padding: 40px;">
@@ -288,17 +86,17 @@ function displayTutors(tutors) {
                 </div>
             </td>
             <td>
-                ${Array.isArray(tutor.subjects) 
-                    ? tutor.subjects.map(sub => `<span class="subject-tag">${sub}</span>`).join('') 
-                    : escapeHtml(tutor.subjects)}
+                ${tutor.subjects && tutor.subjects.length > 0 
+                    ? tutor.subjects.map(sub => `<span class="subject-tag">${escapeHtml(sub)}</span>`).join(' ') 
+                    : '<span style="color: #999;">No subjects</span>'}
             </td>
             <td>
                 <div style="display: flex; align-items: center; gap: 5px;">
-                    ${renderStars(tutor.rating)}
-                    <span style="font-weight: bold; margin-left: 5px;">${tutor.rating}</span>
+                    ${renderStars(tutor.rating || 0)}
+                    <span style="font-weight: bold; margin-left: 5px;">${tutor.rating || 'N/A'}</span>
                 </div>
             </td>
-            <td>${escapeHtml(tutor.experience)}</td>
+            <td>${escapeHtml(tutor.experience || 'No experience listed')}</td>
             <td>
                 <span class="status-badge ${tutor.is_active === false ? 'inactive' : 'active'}">
                     ${tutor.is_active === false ? 'Inactive' : 'Active'}
@@ -318,7 +116,7 @@ function displayTutors(tutors) {
     `).join('');
 }
 
-// Setup tutor form
+// Setup tutor form - SIMPLIFIED VERSION
 function setupForm() {
     const form = document.getElementById('tutorForm');
     form.addEventListener('submit', async function(e) {
@@ -342,7 +140,7 @@ function setupForm() {
             return;
         }
         
-        // Convert subjects string to array
+        // Convert subjects string to array (from comma-separated)
         const subjects = subjectsInput.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
         
         try {
@@ -358,8 +156,6 @@ function setupForm() {
                 
             const method = form.dataset.editingId ? 'PUT' : 'POST';
             
-            console.log('Submitting tutor:', { name, subjects, rating, experience, image, bio });
-            
             const response = await fetch(endpoint, {
                 method: method,
                 headers: {
@@ -368,15 +164,13 @@ function setupForm() {
                 },
                 body: JSON.stringify({
                     name,
-                    subjects,
+                    subjects, // Send as array
                     rating,
                     experience,
                     image,
                     bio
                 })
             });
-            
-            console.log('Response status:', response.status);
             
             if (response.status === 401) {
                 localStorage.removeItem('adminToken');
@@ -385,7 +179,6 @@ function setupForm() {
             }
             
             const result = await response.json();
-            console.log('Response data:', result);
             
             if (response.ok) {
                 showNotification(
@@ -394,6 +187,8 @@ function setupForm() {
                         : 'Tutor added successfully!', 
                     'success'
                 );
+                
+                // Reset form
                 form.reset();
                 delete form.dataset.editingId;
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -403,8 +198,10 @@ function setupForm() {
                 // Refresh the tutors list
                 await loadTutors();
                 
-                // Force refresh subjects page if open
-                localStorage.setItem('tutorsUpdated', Date.now().toString());
+                // Broadcast update
+                if (!form.dataset.editingId) {
+                    broadcastNotification('tutor_added');
+                }
                 
             } else {
                 showNotification(result.error || result.details || 'Error saving tutor', 'error');
@@ -416,8 +213,7 @@ function setupForm() {
     });
 }
 
-
-// Edit tutor
+// Edit tutor - SIMPLIFIED VERSION
 async function editTutor(id) {
     try {
         const token = localStorage.getItem('adminToken');
@@ -435,11 +231,15 @@ async function editTutor(id) {
                 // Fill form with tutor data
                 document.getElementById('tutorName').value = tutor.name;
                 document.getElementById('tutorRating').value = tutor.rating;
-                document.getElementById('tutorSubjects').value = Array.isArray(tutor.subjects) 
+                
+                // Convert subjects array to comma-separated string
+                const subjectsText = Array.isArray(tutor.subjects) 
                     ? tutor.subjects.join(', ') 
-                    : tutor.subjects;
-                document.getElementById('tutorExperience').value = tutor.experience;
-                document.getElementById('tutorImage').value = tutor.image;
+                    : tutor.subjects || '';
+                document.getElementById('tutorSubjects').value = subjectsText;
+                
+                document.getElementById('tutorExperience').value = tutor.experience || '';
+                document.getElementById('tutorImage').value = tutor.image || '';
                 document.getElementById('tutorBio').value = tutor.bio || '';
                 
                 // Change form to update mode
@@ -460,7 +260,7 @@ async function editTutor(id) {
     }
 }
 
-// Delete tutor
+// Delete tutor functions (keep as is)
 function openDeleteTutorModal(id) {
     currentDeleteId = id;
     document.getElementById('deleteTutorModal').style.display = 'block';
@@ -503,7 +303,8 @@ async function confirmDeleteTutor() {
         if (response.ok) {
             showNotification('Tutor deleted successfully!', 'success');
             closeDeleteTutorModal();
-            loadTutors();
+            await loadTutors();
+            broadcastNotification('tutor_deleted');
         } else {
             showNotification(result.error || 'Error deleting tutor', 'error');
         }
@@ -559,10 +360,12 @@ function setupWebSocket() {
 // Utility functions
 function renderStars(rating) {
     let stars = '';
+    const numericRating = parseFloat(rating) || 0;
+    
     for (let i = 1; i <= 5; i++) {
-        if (i <= Math.floor(rating)) {
+        if (i <= Math.floor(numericRating)) {
             stars += '<i class="fas fa-star" style="color: #f39c12;"></i>';
-        } else if (i === Math.ceil(rating) && rating % 1 > 0) {
+        } else if (i === Math.ceil(numericRating) && numericRating % 1 > 0) {
             stars += '<i class="fas fa-star-half-alt" style="color: #f39c12;"></i>';
         } else {
             stars += '<i class="far fa-star" style="color: #ddd;"></i>';
@@ -606,7 +409,19 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// Add some CSS for tutor display
+function broadcastNotification(type) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const notification = {
+            type: type,
+            message: type === 'tutor_added' ? 'New tutor added' : 
+                     type === 'tutor_deleted' ? 'Tutor deleted' : 'Notification',
+            isBrowserNotification: true
+        };
+        ws.send(JSON.stringify(notification));
+    }
+}
+
+// Add CSS for tutor display
 const style = document.createElement('style');
 style.textContent = `
     .subject-tag {
@@ -621,4 +436,20 @@ style.textContent = `
     
     .status-badge {
         display: inline-block;
-        padding: 3px
+        padding: 3px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    
+    .status-badge.active {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-badge.inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+`;
+document.head.appendChild(style);

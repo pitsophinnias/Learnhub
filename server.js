@@ -482,8 +482,8 @@ app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
         } else if (typeof subjects === 'string') {
             subjectsArray = `{${subjects.split(',').map(s => s.trim().toLowerCase()).join(',')}}`;
         }
-		
-		console.log('Formatted subjects:', subjectsArray);
+        
+        console.log('Formatted subjects:', subjectsArray);
         
         const result = await pool.query(
             `INSERT INTO tutors (name, subjects, rating, experience, image, bio, is_active) 
@@ -499,8 +499,8 @@ app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
             message: 'Tutor added successfully', 
             tutor: result.rows[0] 
         });
-		
-		 } catch (error) {
+        
+    } catch (error) {
         console.error('Error adding tutor:', error.message);
         console.error('Full error:', error);
         res.status(500).json({ 
@@ -510,7 +510,6 @@ app.post('/api/admin/tutors', authenticateToken, async (req, res) => {
         });
     }
 });
-
 // Update tutor (Protected)
 app.put('/api/admin/tutors/:id', authenticateToken, async (req, res) => {
     try {
@@ -671,6 +670,7 @@ app.delete('/api/admin/subjects/:subjectId/assignments', authenticateToken, asyn
         res.status(500).json({ error: 'Error clearing assignments' });
     }
 });
+
 
 // Update subject status (protected)
 app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, res) => {
