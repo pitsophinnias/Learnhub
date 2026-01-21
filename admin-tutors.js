@@ -55,6 +55,208 @@ async function loadTutors() {
     }
 }
 
+// Load available subjects for assignment
+async function loadAvailableSubjects() {
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch(`${API_BASE}/api/admin/subjects`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (response.ok) {
+            const subjects = await response.json();
+            populateSubjectSelection(subjects);
+        }
+    } catch (error) {
+        console.error('Error loading subjects:', error);
+        showNotification('Error loading subjects', 'error');
+    }
+}
+
+// Populate subject selection
+function populateSubjectSelection(subjects) {
+    const container = document.getElementById('subjectSelection');
+    if (!container) return;
+    
+    const availableSubjects = subjects.filter(subject => subject.is_available !== false);
+    
+    if (availableSubjects.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 10px; color: #666;">
+                <i class="fas fa-exclamation-triangle"></i> No subjects available
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = availableSubjects.map(subject => `
+        <div style="margin-bottom: 8px;">
+            <input type="checkbox" 
+                   id="subject_${subject.id}" 
+                   value="${subject.id}"
+                   class="subject-checkbox">
+            <label for="subject_${subject.id}" style="margin-left: 5px;">
+                <i class="${subject.icon || 'fas fa-book'}"></i> ${escapeHtml(subject.name)}
+            </label>
+        </div>
+    `).join('');
+}
+
+// Update the setupForm function to handle subject assignment
+function setupForm() {
+    const form = document.getElementById('tutorForm');
+    
+    // Load subjects when form is shown
+    loadAvailableSubjects();
+    
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const name = document.getElementById('tutorName').value.trim();
+        const rating = parseFloat(document.getElementById('tutorRating').value);
+        const experience = document.getElementById('tutorExperience').value.trim();
+        const image = document.getElementById('tutorImage').value.trim();
+        const bio = document.getElementById('tutorBio').value.trim();
+        
+        // Get selected subjects
+        const selectedSubjects = [];
+        document.querySelectorAll('.subject-checkbox:checked').forEach(checkbox => {
+            selectedSubjects.push(checkbox.value);
+        });
+        
+        // Validate inputs
+        if (!name || !rating || !experience || !image) {
+            showNotification('Please fill in all required fields', 'error');
+            return;
+        }
+        
+        if (rating < 1 || rating > 5) {
+            showNotification('Rating must be between 1 and 5', 'error');
+            return;
+        }
+        
+        if (selectedSubjects.length === 0) {
+            showNotification('Please select at least one subject for the tutor', 'error');
+            return;
+        }
+        
+        try {
+            const token = localStorage.getItem('adminToken');
+            if (!token) {
+                window.location.href = 'admin_login.html';
+                return;
+            }
+            
+            // First, create the tutor
+            const createResponse = await fetch(`${API_BASE}/api/admin/tutors`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    name,
+                    rating,
+                    experience,
+                    image,
+                    bio,
+                    subjects: selectedSubjects // Pass as array for subject IDs
+                })
+            });
+            
+            console.log('Create tutor response:', createResponse.status);
+            
+            if (createResponse.status === 401) {
+                localStorage.removeItem('adminToken');
+                window.location.href = 'admin_login.html';
+                return;
+            }
+            
+            const createResult = await createResponse.json();
+            
+            if (createResponse.ok) {
+                const tutorId = createResult.tutor.id;
+                
+                // Now assign subjects to the tutor
+                const assignments = await assignSubjectsToTutor(tutorId, selectedSubjects, token);
+                
+                showNotification(
+                    `Tutor added successfully! Assigned to ${assignments.successCount} subject(s).`,
+                    'success'
+                );
+                
+                // Reset form
+                form.reset();
+                document.querySelectorAll('.subject-checkbox').forEach(cb => cb.checked = false);
+                
+                // Refresh tutors list
+                await loadTutors();
+                
+                // Broadcast update
+                broadcastNotification('tutor_added');
+                
+            } else {
+                showNotification(createResult.error || 'Error adding tutor', 'error');
+            }
+        } catch (error) {
+            console.error('Error adding tutor:', error);
+            showNotification('Network error adding tutor', 'error');
+        }
+    });
+}
+
+// Function to assign subjects to tutor
+async function assignSubjectsToTutor(tutorId, subjectIds, token) {
+    const results = {
+        successCount: 0,
+        errorCount: 0,
+        errors: []
+    };
+    
+    for (const subjectId of subjectIds) {
+        try {
+            const response = await fetch(`${API_BASE}/api/admin/tutors/${tutorId}/subjects/${subjectId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                results.successCount++;
+            } else {
+                results.errorCount++;
+                const error = await response.json();
+                results.errors.push({ subjectId, error: error.error });
+            }
+        } catch (error) {
+            results.errorCount++;
+            results.errors.push({ subjectId, error: error.message });
+        }
+    }
+    
+    return results;
+}
+
+// Add CSS for subject selection
+const subjectStyle = document.createElement('style');
+subjectStyle.textContent = `
+    .subject-checkbox {
+        margin-right: 5px;
+    }
+    
+    .subject-checkbox:checked + label {
+        font-weight: bold;
+        color: #3498db;
+    }
+    
+    .subject-checkbox:checked + label i {
+        color: #3498db;
+    }
+`;
+document.head.appendChild(subjectStyle);
+
 // Display tutors in table
 function displayTutors(tutors) {
     const tbody = document.getElementById('tutorsList');
@@ -141,15 +343,22 @@ function setupForm() {
         }
         
         // Convert subjects string to array
-        const subjects = subjectsInput.split(',').map(s => s.trim()).filter(s => s.length > 0);
+        const subjects = subjectsInput.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
         
         try {
             const token = localStorage.getItem('adminToken');
+            if (!token) {
+                window.location.href = 'admin_login.html';
+                return;
+            }
+            
             const endpoint = form.dataset.editingId 
                 ? `${API_BASE}/api/admin/tutors/${form.dataset.editingId}`
                 : `${API_BASE}/api/admin/tutors`;
                 
             const method = form.dataset.editingId ? 'PUT' : 'POST';
+            
+            console.log('Submitting tutor:', { name, subjects, rating, experience, image, bio });
             
             const response = await fetch(endpoint, {
                 method: method,
@@ -163,10 +372,11 @@ function setupForm() {
                     rating,
                     experience,
                     image,
-                    bio,
-                    is_active: true
+                    bio
                 })
             });
+            
+            console.log('Response status:', response.status);
             
             if (response.status === 401) {
                 localStorage.removeItem('adminToken');
@@ -175,6 +385,7 @@ function setupForm() {
             }
             
             const result = await response.json();
+            console.log('Response data:', result);
             
             if (response.ok) {
                 showNotification(
@@ -187,22 +398,25 @@ function setupForm() {
                 delete form.dataset.editingId;
                 const submitBtn = form.querySelector('button[type="submit"]');
                 submitBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add Tutor';
+                submitBtn.style.background = '';
                 
-                // RELOAD TUTORS LIST AFTER SUCCESS
-                loadTutors();
+                // Refresh the tutors list
+                await loadTutors();
                 
-                // ADD THIS: Set a flag to indicate tutors were updated
+                // Force refresh subjects page if open
                 localStorage.setItem('tutorsUpdated', Date.now().toString());
                 
             } else {
-                showNotification(result.error || 'Error saving tutor', 'error');
+                showNotification(result.error || result.details || 'Error saving tutor', 'error');
             }
         } catch (error) {
             console.error('Error saving tutor:', error);
-            showNotification('Error saving tutor', 'error');
+            showNotification('Network error saving tutor', 'error');
         }
     });
 }
+
+
 // Edit tutor
 async function editTutor(id) {
     try {
