@@ -49,6 +49,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+	// Setup smooth scrolling for navigation
+    setupSmoothScrolling(); 
+	
     // Calendar initialization
     initializeCalendar();
     startCountdown();
@@ -131,6 +134,39 @@ document.addEventListener('DOMContentLoaded', function() {
 // PAYMENT DEADLINE FUNCTIONS
 // ==============================================
 
+function setupSmoothScrolling() {
+    // Select all navigation links
+    const navLinks = document.querySelectorAll('nav a[href^="#"]');
+    
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            const targetId = this.getAttribute('href');
+            if (targetId === '#') return;
+            
+            const targetElement = document.querySelector(targetId);
+            if (targetElement) {
+                // Calculate position, accounting for fixed header
+                const headerHeight = document.querySelector('nav').offsetHeight || 70;
+                const targetPosition = targetElement.offsetTop - headerHeight;
+                
+                // Smooth scroll
+                window.scrollTo({
+                    top: targetPosition,
+                    behavior: 'smooth'
+                });
+                
+                // Close mobile menu if open
+                const mainNav = document.getElementById('main-nav');
+                if (mainNav && mainNav.classList.contains('active')) {
+                    mainNav.classList.remove('active');
+                    mainNav.classList.remove('side-menu');
+                }
+            }
+        });
+    });
+}
 // Initialize countdown for payment deadlines
 function startCountdown() {
     // Find the next upcoming deadline
