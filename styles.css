@@ -848,3 +848,141 @@ td {
 .admin-login-item {
     margin-left: auto;
 }
+
+
+/* Deadline info styles */
+.deadline-info {
+    margin: 20px 0;
+    padding: 15px;
+    background: rgba(52, 152, 219, 0.1);
+    border-radius: 8px;
+    text-align: center;
+}
+
+.deadline-info p {
+    margin: 10px 0;
+    color: #333;
+}
+
+.deadline-info strong {
+    color: var(--dark-color);
+}
+
+#download-fees-btn {
+    margin-top: 15px;
+    background: var(--success-color);
+}
+
+#download-fees-btn:hover {
+    background: #27ae60;
+}
+
+/* Deadline list styles */
+#deadline-list {
+    list-style: none;
+}
+
+#deadline-list li {
+    padding: 12px;
+    margin-bottom: 10px;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid var(--primary-color);
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+#deadline-list li.current-deadline {
+    border-left-color: var(--accent-color);
+    background: #fff9e6;
+}
+
+#deadline-list li.past-deadline {
+    border-left-color: #ccc;
+    opacity: 0.7;
+}
+
+#deadline-list li strong {
+    display: block;
+    color: var(--dark-color);
+    margin-bottom: 5px;
+}
+
+#deadline-list li span {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+#deadline-list li small {
+    color: var(--primary-color);
+    font-weight: bold;
+}
+
+/* Countdown urgency colors */
+.countdown-item.urgent {
+    background: var(--danger-color) !important;
+    animation: pulse 1.5s infinite;
+}
+
+.countdown-item.warning {
+    background: var(--warning-color) !important;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* Navigation buttons for deadlines */
+.deadline-navigation {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin: 15px 0;
+}
+
+.deadline-nav-btn {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.deadline-nav-btn:hover {
+    background: #2980b9;
+}
+/* Add to your existing styles */
+#download-fees-btn {
+    margin-top: 15px;
+    background: var(--success-color);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#download-fees-btn:hover {
+    background: #27ae60;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+}
+
+#download-fees-btn i {
+    font-size: 1.1em;
+}
+.download-options {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}

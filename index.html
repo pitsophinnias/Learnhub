@@ -58,56 +58,68 @@
         </div>
     </section>
 
-    <section id="calendar" class="calendar-section">
-        <div class="container">
-            <div class="countdown-container">
-                <h3>Time until Next Exam (<span id="next-exam-date"></span>)</h3>
-                <div class="countdown">
-                    <div class="countdown-item">
-                        <span id="days">00</span>
-                        <small>Days</small>
-                    </div>
-                    <div class="countdown-item">
-                        <span id="hours">00</span>
-                        <small>Hours</small>
-                    </div>
-                    <div class="countdown-item">
-                        <span id="minutes">00</span>
-                        <small>Minutes</small>
-                    </div>
-                    <div class="countdown-item">
-                        <span id="seconds">00</span>
-                        <small>Seconds</small>
-                    </div>
+<section id="calendar" class="calendar-section">
+    <div class="container">
+        <div class="countdown-container">
+			<h3>Countdown to Fee Payment Deadline</h3>
+			<div class="deadline-info">
+				<p><strong>Current Deadline:</strong> <span id="current-deadline"></span></p>
+				<p><strong>Fee:</strong> <span id="deadline-fee"></span></p>
+				<div class="download-options">
+					<button id="preview-fees-btn" class="btn btn-secondary">
+						<i class="fas fa-eye"></i> Preview
+					</button>
+					<button id="download-fees-btn" class="btn">
+						<i class="fas fa-file-download"></i> Download
+					</button>
+				</div>
+			</div>
+		<div class="countdown">
+			<div class="countdown-item">
+				<span id="days">00</span>
+				<small>Days</small>
+			</div>
+			<div class="countdown-item">
+				<span id="hours">00</span>
+				<small>Hours</small>
+			</div>
+			<div class="countdown-item">
+				<span id="minutes">00</span>
+				<small>Minutes</small>
+			</div>
+			<div class="countdown-item">
+				<span id="seconds">00</span>
+				<small>Seconds</small>
+			</div>
+		</div>
+	</div>
+        <div class="exam-schedule">
+            <div class="calendar">
+                <div class="month-header">
+                    <button id="prev-month">◄</button>
+                    <h3 id="current-month"></h3>
+                    <button id="next-month">►</button>
                 </div>
+                <div class="weekdays">
+                    <div>Sun</div>
+                    <div>Mon</div>
+                    <div>Tue</div>
+                    <div>Wed</div>
+                    <div>Thu</div>
+                    <div>Fri</div>
+                    <div>Sat</div>
+                </div>
+                <div class="days" id="calendar-days"></div>
             </div>
-
-            <div class="exam-schedule">
-                <div class="calendar">
-                    <div class="month-header">
-                        <button id="prev-month">◄</button>
-                        <h3 id="current-month"></h3>
-                        <button id="next-month">►</button>
-                    </div>
-                    <div class="weekdays">
-                        <div>Sun</div>
-                        <div>Mon</div>
-                        <div>Tue</div>
-                        <div>Wed</div>
-                        <div>Thu</div>
-                        <div>Fri</div>
-                        <div>Sat</div>
-                    </div>
-                    <div class="days" id="calendar-days"></div>
-                </div>
-                <div class="exam-subjects">
-                    <h4>Upcoming Exams</h4>
-                    <ul id="exam-list"></ul>
-                </div>
+            <div class="exam-subjects">
+                <h4>Upcoming Payment Deadlines</h4>
+                <ul id="deadline-list">
+                    <!-- Deadlines will be populated by JavaScript -->
+                </ul>
             </div>
         </div>
-    </section>
-
+    </div>
+</section>
     <section id="how-it-works" class="steps-section">
         <div class="container">
             <h2>How It Works</h2>

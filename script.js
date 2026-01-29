@@ -3,7 +3,34 @@
 
 // Global variables
 let currentDate = new Date();
-let selectedExamDate = new Date(new Date().getFullYear(), 5, 15); // June 15th
+let selectedDeadline = null;
+let paymentDeadlines = [
+    {
+        name: "June 2026 LGCSE Private Candidates",
+        date: new Date('2026-03-30T23:59:59'),
+        fee: "M910.00 - M1,950.00 (depending on subjects)",
+        type: "private"
+    },
+    {
+        name: "Oct/Nov 2026 School Candidates",
+        date: new Date('2026-04-30T23:59:59'),
+        fee: "M2,120.00 - M3,370.00 (depending on subjects)",
+        type: "school"
+    },
+    {
+        name: "Oct/Nov 2026 Private Candidates",
+        date: new Date('2026-04-30T23:59:59'),
+        fee: "M910.00 - M2,730.00 (depending on subjects)",
+        type: "private"
+    },
+    {
+        name: "2026 DELF Candidates",
+        date: new Date('2026-04-30T23:59:59'),
+        fee: "M615.00 per subject",
+        type: "delf"
+    }
+];
+let currentDeadlineIndex = 0;
 let ws = null;
 
 // Main initialization
@@ -77,6 +104,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize tutor modal
     initializeTutorModal();
     
+    // Setup document download and preview
+    setupDocumentDownload();
+    setupPreviewButton();
+    
     // Request notification permission
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
@@ -95,6 +126,215 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+// ==============================================
+// PAYMENT DEADLINE FUNCTIONS
+// ==============================================
+
+// Initialize countdown for payment deadlines
+function startCountdown() {
+    // Find the next upcoming deadline
+    const now = new Date();
+    const upcomingDeadlines = paymentDeadlines
+        .filter(deadline => deadline.date > now)
+        .sort((a, b) => a.date - b.date);
+    
+    if (upcomingDeadlines.length > 0) {
+        selectedDeadline = upcomingDeadlines[0];
+        currentDeadlineIndex = paymentDeadlines.findIndex(d => d.name === selectedDeadline.name);
+    } else {
+        // If all deadlines have passed, use the last one and add a year
+        selectedDeadline = {
+            ...paymentDeadlines[0],
+            date: new Date(paymentDeadlines[0].date.getFullYear() + 1, 
+                          paymentDeadlines[0].date.getMonth(), 
+                          paymentDeadlines[0].date.getDate())
+        };
+    }
+    
+    updateDeadlineDisplay();
+    updateCountdown();
+    setInterval(updateCountdown, 1000);
+    
+    // Setup deadline navigation
+    setupDeadlineNavigation();
+}
+
+function updateDeadlineDisplay() {
+    const currentDeadlineEl = document.getElementById('current-deadline');
+    const deadlineFeeEl = document.getElementById('deadline-fee');
+    
+    if (currentDeadlineEl && selectedDeadline) {
+        currentDeadlineEl.textContent = `${selectedDeadline.name} - ${selectedDeadline.date.toLocaleDateString('en-US', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        })}`;
+    }
+    
+    if (deadlineFeeEl && selectedDeadline) {
+        deadlineFeeEl.textContent = selectedDeadline.fee;
+    }
+    
+    updateDeadlineList();
+}
+
+function updateDeadlineList() {
+    const deadlineList = document.getElementById('deadline-list');
+    if (!deadlineList) return;
+    
+    deadlineList.innerHTML = paymentDeadlines.map(deadline => {
+        const isPast = deadline.date < new Date();
+        const isCurrent = selectedDeadline && deadline.name === selectedDeadline.name;
+        
+        return `
+            <li class="${isPast ? 'past-deadline' : ''} ${isCurrent ? 'current-deadline' : ''}">
+                <strong>${deadline.name}</strong><br>
+                <span>Due: ${deadline.date.toLocaleDateString()}</span><br>
+                <small>${deadline.fee}</small>
+            </li>
+        `;
+    }).join('');
+}
+
+function setupDeadlineNavigation() {
+    // Optional: Add navigation buttons if needed
+    const prevBtn = document.getElementById('prev-deadline');
+    const nextBtn = document.getElementById('next-deadline');
+    
+    if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+            currentDeadlineIndex = (currentDeadlineIndex - 1 + paymentDeadlines.length) % paymentDeadlines.length;
+            selectedDeadline = paymentDeadlines[currentDeadlineIndex];
+            updateDeadlineDisplay();
+            updateCountdown();
+        });
+    }
+    
+    if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+            currentDeadlineIndex = (currentDeadlineIndex + 1) % paymentDeadlines.length;
+            selectedDeadline = paymentDeadlines[currentDeadlineIndex];
+            updateDeadlineDisplay();
+            updateCountdown();
+        });
+    }
+}
+
+function updateCountdown() {
+    if (!selectedDeadline) return;
+    
+    const now = new Date();
+    const timeDiff = selectedDeadline.date.getTime() - now.getTime();
+    
+    if (timeDiff <= 0) {
+        // Find next deadline
+        const upcomingDeadlines = paymentDeadlines
+            .filter(deadline => deadline.date > now)
+            .sort((a, b) => a.date - b.date);
+        
+        if (upcomingDeadlines.length > 0) {
+            selectedDeadline = upcomingDeadlines[0];
+            currentDeadlineIndex = paymentDeadlines.findIndex(d => d.name === selectedDeadline.name);
+        } else {
+            // Add one year to all deadlines
+            paymentDeadlines.forEach(deadline => {
+                deadline.date.setFullYear(deadline.date.getFullYear() + 1);
+            });
+            selectedDeadline = paymentDeadlines[0];
+        }
+        
+        updateDeadlineDisplay();
+    }
+    
+    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+    
+    const daysEl = document.getElementById('days');
+    const hoursEl = document.getElementById('hours');
+    const minutesEl = document.getElementById('minutes');
+    const secondsEl = document.getElementById('seconds');
+    
+    if (daysEl) daysEl.textContent = days.toString().padStart(2, '0');
+    if (hoursEl) hoursEl.textContent = hours.toString().padStart(2, '0');
+    if (minutesEl) minutesEl.textContent = minutes.toString().padStart(2, '0');
+    if (secondsEl) secondsEl.textContent = seconds.toString().padStart(2, '0');
+    
+    // Update color based on urgency
+    updateCountdownColor(days);
+}
+
+function updateCountdownColor(days) {
+    const countdownItems = document.querySelectorAll('.countdown-item');
+    
+    countdownItems.forEach(item => {
+        item.style.backgroundColor = '';
+    });
+    
+    if (days <= 7) {
+        countdownItems.forEach(item => {
+            item.style.backgroundColor = '#e74c3c'; // Red for urgent
+        });
+    } else if (days <= 30) {
+        countdownItems.forEach(item => {
+            item.style.backgroundColor = '#f39c12'; // Orange for warning
+        });
+    }
+}
+
+// ==============================================
+// DOCUMENT DOWNLOAD & PREVIEW FUNCTIONS
+// ==============================================
+
+function setupDocumentDownload() {
+    const downloadBtn = document.getElementById('download-fees-btn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', async function() {
+            try {
+                const imagePath = '/images/Exam Fees 2026.jpg';
+                
+                // Method 1: Direct download (works for same-origin files)
+                const link = document.createElement('a');
+                link.href = imagePath;
+                link.download = 'Exam_Fees_2026.jpg';
+                
+                // For some browsers, we need to append to body first
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                // Method 2: Fallback - open in new tab if direct download fails
+                const fallbackTimeout = setTimeout(() => {
+                    showNotification('Opening document in new tab...', 'info');
+                    window.open(imagePath, '_blank');
+                }, 1500);
+                
+                // Clear fallback if download seems successful
+                setTimeout(() => {
+                    clearTimeout(fallbackTimeout);
+                    showNotification('Exam fees document downloaded!', 'success');
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Download error:', error);
+                showNotification('Opening document instead...', 'warning');
+                window.open('/images/Exam Fees 2026.jpg', '_blank');
+            }
+        });
+    }
+}
+
+function setupPreviewButton() {
+    const previewBtn = document.getElementById('preview-fees-btn');
+    if (previewBtn) {
+        previewBtn.addEventListener('click', function() {
+            showNotification('Opening fee schedule in new tab...', 'info');
+            window.open('/images/Exam Fees 2026.jpg', '_blank');
+        });
+    }
+}
 
 // ==============================================
 // ANNOUNCEMENTS FUNCTIONS
@@ -477,7 +717,7 @@ async function confirmBooking() {
 }
 
 // ==============================================
-// CALENDAR & COUNTDOWN FUNCTIONS
+// CALENDAR FUNCTIONS
 // ==============================================
 
 function initializeCalendar() {
@@ -539,68 +779,17 @@ function updateCalendar() {
             dayElement.classList.add('today');
         }
         
-        if (month === 5 && day === 15) { // June 15
-            dayElement.classList.add('exam-day');
-        }
+        // Mark payment deadline days
+        paymentDeadlines.forEach(deadline => {
+            if (currentDateObj.getDate() === deadline.date.getDate() &&
+                currentDateObj.getMonth() === deadline.date.getMonth()) {
+                dayElement.classList.add('exam-day'); // Using existing class for styling
+                dayElement.title = deadline.name;
+            }
+        });
         
         daysContainer.appendChild(dayElement);
     }
-    
-    // Update exam list
-    updateExamList();
-}
-
-function updateExamList() {
-    const examList = document.getElementById('exam-list');
-    if (!examList) return;
-    
-    examList.innerHTML = `
-        <li>Mathematics - June 15, 2025</li>
-        <li>Physics - June 16, 2025</li>
-        <li>Chemistry - June 17, 2025</li>
-        <li>Biology - June 18, 2025</li>
-        <li>English - June 19, 2025</li>
-    `;
-}
-
-function startCountdown() {
-    const nextExamDate = document.getElementById('next-exam-date');
-    if (nextExamDate) {
-        nextExamDate.textContent = selectedExamDate.toLocaleDateString('en-US', {
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric'
-        });
-    }
-    
-    updateCountdown();
-    setInterval(updateCountdown, 1000);
-}
-
-function updateCountdown() {
-    const now = new Date();
-    const timeDiff = selectedExamDate.getTime() - now.getTime();
-    
-    if (timeDiff <= 0) {
-        selectedExamDate.setFullYear(selectedExamDate.getFullYear() + 1);
-        startCountdown();
-        return;
-    }
-    
-    const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-    const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
-    
-    const daysEl = document.getElementById('days');
-    const hoursEl = document.getElementById('hours');
-    const minutesEl = document.getElementById('minutes');
-    const secondsEl = document.getElementById('seconds');
-    
-    if (daysEl) daysEl.textContent = days.toString().padStart(2, '0');
-    if (hoursEl) hoursEl.textContent = hours.toString().padStart(2, '0');
-    if (minutesEl) minutesEl.textContent = minutes.toString().padStart(2, '0');
-    if (secondsEl) secondsEl.textContent = seconds.toString().padStart(2, '0');
 }
 
 // ==============================================
