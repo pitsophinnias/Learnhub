@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -35,8 +37,12 @@ const authenticateToken = (req, res, next) => {
 
 //PostgreSQL Connection
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    user: 'postgres',
+    host: 'localhost',
+    database: 'learnhub_local',
+    password: 'pitso2003',           // ← your real password
+    port: 5432,
+    ssl: false,
 });
 
 pool.connect((err, client, release) => {
@@ -923,5 +929,383 @@ app.put('/api/admin/subjects/:subjectId/status', authenticateToken, async (req, 
         res.status(500).json({ error: 'Error updating subject status' });
     }
 });
+
+// ────────────────────────────────────────────────
+// Forgot Password & Reset Password Endpoints
+// ────────────────────────────────────────────────
+
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+
+// Email transporter setup (Gmail or other SMTP)
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+// 1. Request reset link
+app.post('/api/admin/forgot-password', async (req, res) => {
+    try {
+        const { username } = req.body;
+
+        // Basic input validation
+        if (!username || typeof username !== 'string' || username.trim() === '') {
+            return res.status(400).json({ 
+                error: 'Username is required' 
+            });
+        }
+
+        const trimmedUsername = username.trim();
+
+        console.log(`Forgot-password request for username: "${trimmedUsername}"`);
+
+        // Find the admin user and their associated tutor email
+        const result = await pool.query(`
+            SELECT 
+                au.id AS admin_id,
+                au.username,
+                t.email AS tutor_email
+            FROM admin_users au
+            LEFT JOIN tutors t ON au.tutor_id = t.id
+            WHERE au.username ILIKE $1
+        `, [trimmedUsername]);
+
+        // Security best practice: always return the same message
+        // (prevents username enumeration attacks)
+        if (result.rows.length === 0 || !result.rows[0].tutor_email) {
+            console.log(`No user or no email found for: "${trimmedUsername}"`);
+            return res.status(200).json({
+                message: 'If an account with that username exists, a reset link has been sent to the associated email.'
+            });
+        }
+
+        const { admin_id, tutor_email } = result.rows[0];
+
+        console.log(`User found - ID: ${admin_id}, Email: ${tutor_email}`);
+
+        // Generate secure one-time token
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour expiry
+
+        // Store token
+        await pool.query(`
+            INSERT INTO password_reset_tokens 
+                (admin_id, token, expires_at)
+            VALUES 
+                ($1, $2, $3)
+            ON CONFLICT DO NOTHING
+        `, [admin_id, token, expiresAt]);
+
+        // Build reset link
+        const baseUrl = process.env.APP_URL || 'http://localhost:3000';
+        const resetUrl = `${baseUrl}/reset_password.html?token=${token}`;
+
+        // Send email
+        const mailInfo = await transporter.sendMail({
+            from: `"LearnHub Admin" <${process.env.EMAIL_USER}>`,
+            to: tutor_email,
+            subject: 'LearnHub Admin Password Reset Request',
+            text: `Hello,
+
+A password reset was requested for your LearnHub admin account (${trimmedUsername}).
+
+Use this link to reset your password:
+${resetUrl}
+
+This link will expire in 1 hour.
+
+If you did not request this reset, please ignore this email or contact support.
+
+Best regards,
+LearnHub Team`,
+            html: `
+                <h2>Password Reset Request</h2>
+                <p>Hello,</p>
+                <p>A password reset was requested for your LearnHub admin account 
+                   (<strong>${trimmedUsername}</strong>).</p>
+                
+                <p style="margin: 25px 0;">
+                    <a href="${resetUrl}" 
+                       style="background-color: #3498db; color: white; padding: 12px 28px; 
+                              text-decoration: none; border-radius: 5px; font-weight: bold;">
+                        Reset Your Password
+                    </a>
+                </p>
+                
+                <p>This link will expire in 1 hour.</p>
+                <p>If you did not request this reset, please ignore this email or contact support.</p>
+                
+                <p>Best regards,<br>LearnHub Team</p>
+            `
+        });
+
+        console.log(`Reset email sent to ${tutor_email} - Message ID: ${mailInfo.messageId}`);
+
+        // Always return success message (even if email failed internally)
+        res.status(200).json({
+            message: 'If an account with that username exists, a reset link has been sent to the associated email.'
+        });
+
+    } catch (err) {
+        console.error('Forgot password endpoint error:', {
+            message: err.message,
+            stack: err.stack,
+            code: err.code,
+            detail: err.detail || 'No detail'
+        });
+
+        // Still return neutral success message to avoid leaking info
+        res.status(200).json({
+            message: 'If an account with that username exists, a reset link has been sent to the associated email.'
+        });
+    }
+});
+
+
+// 2. Reset password with token
+app.post('/api/admin/reset-password', async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+        if (!token || !newPassword) {
+            return res.status(400).json({ error: 'Token and new password are required' });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ error: 'Password must be at least 8 characters' });
+        }
+
+        // Find valid (non-expired) token
+        const tokenResult = await pool.query(`
+            SELECT admin_id 
+            FROM password_reset_tokens 
+            WHERE token = $1 AND expires_at > NOW()
+        `, [token]);
+
+        if (tokenResult.rows.length === 0) {
+            return res.status(400).json({ error: 'Invalid or expired reset token' });
+        }
+
+        const adminId = tokenResult.rows[0].admin_id;
+
+        // Hash new password
+        const hashed = await bcrypt.hash(newPassword, 10);
+
+        // Update password
+        await pool.query(`
+            UPDATE admin_users 
+            SET password_hash = $1 
+            WHERE id = $2
+        `, [hashed, adminId]);
+
+        // Delete used token (one-time use)
+        await pool.query('DELETE FROM password_reset_tokens WHERE token = $1', [token]);
+
+        res.status(200).json({ message: 'Password reset successfully. You can now log in.' });
+    } catch (err) {
+        console.error('Reset password endpoint error:', err);
+        res.status(500).json({ error: 'Server error - please try again' });
+    }
+});
+
+app.get('/test-send-email', async (req, res) => {
+    try {
+        const info = await transporter.sendMail({
+            from: `"Test" <${process.env.EMAIL_USER}>`,
+            to: 'pitsophinnias@gmail.com',
+            subject: 'Test Email - LearnHub Local',
+            text: 'This is a manual test from your server.\nTime: ' + new Date().toISOString(),
+            html: '<h2>Test Email</h2><p>This is a manual test from your local server.</p><p>Time: ' + new Date().toISOString() + '</p>'
+        });
+        console.log('Test email sent - message ID:', info.messageId);
+        res.send('Test email sent! Check inbox/spam. Message ID: ' + info.messageId);
+    } catch (err) {
+        console.error('Test email failed:', err.message, err.stack);
+        res.status(500).send('Failed: ' + err.message);
+    }
+});
+
+// Archive old bookings (can be called manually or via cron)
+app.post('/api/admin/archive-old-bookings', authenticateToken, async (req, res) => {
+    try {
+        const { days = 7 } = req.body; // Default to 7 days
+        console.log(`Archiving bookings older than ${days} days...`);
+        
+        // Begin transaction
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Find bookings older than specified days
+            const oldBookings = await client.query(
+                `SELECT * FROM bookings 
+                 WHERE created_at < NOW() - INTERVAL '${days} days'`
+            );
+            
+            if (oldBookings.rows.length === 0) {
+                await client.query('COMMIT');
+                return res.status(200).json({ 
+                    message: 'No bookings to archive', 
+                    archived: 0 
+                });
+            }
+            
+            // Archive each booking
+            for (const booking of oldBookings.rows) {
+                // Insert into archive table
+                await client.query(
+                    `INSERT INTO bookings_archive 
+                     (id, tutor_id, subject, user_number, schedule, created_at, original_id)
+                     VALUES ($1, $2, $3, $4, $5, $6, $1)`,
+                    [booking.id, booking.tutor_id, booking.subject, 
+                     booking.user_number, booking.schedule, booking.created_at]
+                );
+                
+                // Delete from original table
+                await client.query('DELETE FROM bookings WHERE id = $1', [booking.id]);
+            }
+            
+            await client.query('COMMIT');
+            
+            // Broadcast notification
+            broadcastNotification('bookings_archived');
+            
+            console.log(`Archived ${oldBookings.rows.length} old bookings`);
+            res.status(200).json({ 
+                message: 'Old bookings archived successfully', 
+                archived: oldBookings.rows.length 
+            });
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        
+    } catch (error) {
+        console.error('Error archiving bookings:', error.message);
+        res.status(500).json({ error: 'Error archiving bookings' });
+    }
+});
+
+// Get archived bookings (protected)
+app.get('/api/admin/archived-bookings', authenticateToken, async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+        const offset = (page - 1) * limit;
+        
+        // Get total count
+        const countResult = await pool.query('SELECT COUNT(*) FROM bookings_archive');
+        const total = parseInt(countResult.rows[0].count);
+        
+        // Get paginated archived bookings with tutor names
+        const result = await pool.query(
+            `SELECT ba.*, t.name AS tutor_name 
+             FROM bookings_archive ba
+             LEFT JOIN tutors t ON ba.tutor_id = t.id
+             ORDER BY ba.archived_at DESC, ba.created_at DESC
+             LIMIT $1 OFFSET $2`,
+            [limit, offset]
+        );
+        
+        res.status(200).json({
+            bookings: result.rows,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: total,
+                totalPages: Math.ceil(total / limit)
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching archived bookings:', error.message);
+        res.status(500).json({ error: 'Error fetching archived bookings' });
+    }
+});
+
+// Restore an archived booking (protected)
+app.post('/api/admin/restore-archived-booking/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            // Get archived booking
+            const archivedBooking = await client.query(
+                'SELECT * FROM bookings_archive WHERE id = $1',
+                [id]
+            );
+            
+            if (archivedBooking.rows.length === 0) {
+                return res.status(404).json({ error: 'Archived booking not found' });
+            }
+            
+            const booking = archivedBooking.rows[0];
+            
+            // Restore to main table (create new record)
+            const restored = await client.query(
+                `INSERT INTO bookings (tutor_id, subject, user_number, schedule, created_at) 
+                 VALUES ($1, $2, $3, $4, $5) 
+                 RETURNING *`,
+                [booking.tutor_id, booking.subject, booking.user_number, 
+                 booking.schedule, booking.created_at]
+            );
+            
+            // Delete from archive
+            await client.query('DELETE FROM bookings_archive WHERE id = $1', [id]);
+            
+            await client.query('COMMIT');
+            
+            broadcastNotification('booking_restored');
+            
+            res.status(200).json({ 
+                message: 'Booking restored successfully',
+                booking: restored.rows[0]
+            });
+            
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+        
+    } catch (error) {
+        console.error('Error restoring booking:', error.message);
+        res.status(500).json({ error: 'Error restoring booking' });
+    }
+});
+
+// Delete archived booking permanently (protected)
+app.delete('/api/admin/archived-bookings/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        const result = await pool.query(
+            'DELETE FROM bookings_archive WHERE id = $1 RETURNING *',
+            [id]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Archived booking not found' });
+        }
+        
+        res.status(200).json({ 
+            message: 'Archived booking deleted permanently',
+            booking: result.rows[0]
+        });
+        
+    } catch (error) {
+        console.error('Error deleting archived booking:', error.message);
+        res.status(500).json({ error: 'Error deleting archived booking' });
+    }
+});
+
 
 server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));

@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification(notification.message);
             
             // Refresh relevant sections based on notification type
-            if (notification.type === 'booking' || notification.type === 'booking_deleted') {
+            if (notification.type === 'booking' || notification.type === 'booking_deleted' || notification.type === 'bookings_archived' || notification.type === 'booking_restored') {
                 fetchBookings();
                 updateStats();
             } else if (notification.type === 'contact' || notification.type === 'contact_deleted') {
@@ -89,7 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 5000);
     }
 
-    // Fetch and display bookings
+    // Fetch and display recent bookings (last 7 days)
     async function fetchBookings() {
         try {
             const response = await fetch('/api/bookings', {
@@ -108,7 +108,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            const bookings = await response.json();
+            let bookings = await response.json();
+            
+            // Filter to only show bookings from the last 7 days
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            
+            bookings = bookings.filter(booking => {
+                const createdAt = new Date(booking.created_at);
+                return createdAt >= oneWeekAgo;
+            });
+            
             const tbody = document.querySelector('#bookings-table tbody');
             tbody.innerHTML = '';
             
@@ -117,7 +127,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 20px;">
                             <i class="fas fa-calendar-times" style="font-size: 2rem; color: #ddd; margin-bottom: 10px;"></i>
-                            <p>No bookings found</p>
+                            <p>No recent bookings found (last 7 days)</p>
+                            <p><small><a href="admin-archives.html" style="color: #3498db;">View Archived Bookings</a></small></p>
                         </td>
                     </tr>
                 `;
@@ -208,13 +219,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update all stats
     async function updateStats() {
         try {
-            // Fetch bookings count
+            // Fetch bookings count (total including archived)
             const bookingsRes = await fetch('/api/bookings', {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
             if (bookingsRes.ok) {
                 const bookings = await bookingsRes.json();
                 document.getElementById('total-bookings').textContent = Array.isArray(bookings) ? bookings.length : 0;
+            }
+            
+            // Fetch archived bookings count
+            try {
+                const archivedRes = await fetch('/api/admin/archived-bookings?limit=1', {
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (archivedRes.ok) {
+                    const archivedData = await archivedRes.json();
+                    // You could display this somewhere if needed
+                    console.log(`Total archived bookings: ${archivedData.pagination?.total || 0}`);
+                }
+            } catch (e) {
+                console.log('Could not fetch archived count');
             }
             
             // Fetch contacts count
@@ -325,10 +350,97 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // ==============================================
+    // ARCHIVE FUNCTIONS
+    // ==============================================
+
+    // Trigger archiving manually
+    async function triggerArchive() {
+        if (!confirm('Archive all bookings older than 7 days?')) return;
+        
+        try {
+            const response = await fetch('/api/admin/archive-old-bookings', {
+                method: 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ days: 7 })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                showNotification(`Archived ${data.archived} booking(s)`, 'success');
+                fetchBookings(); // Refresh the table
+                updateStats();
+            } else {
+                showNotification(data.error, 'error');
+            }
+        } catch (error) {
+            console.error('Error archiving:', error);
+            showNotification('Error archiving bookings', 'error');
+        }
+    }
+
+    // Add archive button to the bookings section
+    function addArchiveButton() {
+        const bookingsSection = document.querySelector('#bookings');
+        if (!bookingsSection) return;
+        
+        const headerDiv = bookingsSection.querySelector('div');
+        if (!headerDiv) return;
+        
+        // Check if buttons already exist
+        if (document.getElementById('archive-btn')) return;
+        
+        const archiveBtn = document.createElement('a');
+        archiveBtn.id = 'archive-btn';
+        archiveBtn.href = '#bookings';
+        archiveBtn.className = 'btn';
+        archiveBtn.style.cssText = 'padding: 8px 16px; font-size: 0.9rem; margin-left: 10px; background: #95a5a6;';
+        archiveBtn.innerHTML = '<i class="fas fa-archive"></i> Archive Old';
+        archiveBtn.onclick = (e) => {
+            e.preventDefault();
+            triggerArchive();
+        };
+        
+        const viewArchiveLink = document.createElement('a');
+        viewArchiveLink.id = 'view-archive-btn';
+        viewArchiveLink.href = 'admin-archives.html';
+        viewArchiveLink.className = 'btn';
+        viewArchiveLink.style.cssText = 'padding: 8px 16px; font-size: 0.9rem; margin-left: 10px; background: #3498db;';
+        viewArchiveLink.innerHTML = '<i class="fas fa-folder-open"></i> View Archives';
+        
+        headerDiv.appendChild(archiveBtn);
+        headerDiv.appendChild(viewArchiveLink);
+    }
+
+    // Add archive info to the page
+    function addArchiveInfo() {
+        const quickStats = document.querySelector('#quick-stats .announcement-card:first-child');
+        if (!quickStats) return;
+        
+        // Add small archive link under total bookings
+        const archiveInfo = document.createElement('p');
+        archiveInfo.style.cssText = 'font-size: 0.8rem; margin-top: 5px;';
+        archiveInfo.innerHTML = '<a href="admin-archives.html" style="color: #7f8c8d;"><i class="fas fa-archive"></i> View Archives</a>';
+        
+        quickStats.appendChild(archiveInfo);
+    }
+
+    // ==============================================
+    // END ARCHIVE FUNCTIONS
+    // ==============================================
+
     // Request notification permission on page load
     if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
     }
+
+    // Add archive buttons
+    addArchiveButton();
+    addArchiveInfo();
 
     // Initial fetch and stats update
     fetchBookings();
@@ -337,4 +449,15 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Refresh stats every 30 seconds
     setInterval(updateStats, 30000);
+
+    // Check for URL parameter to show archive success message
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('archived') === 'success') {
+        showNotification('Bookings archived successfully', 'success');
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (urlParams.get('restored') === 'success') {
+        showNotification('Booking restored successfully', 'success');
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
 });

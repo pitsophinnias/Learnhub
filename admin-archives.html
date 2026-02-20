@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Archived Bookings - LearnHub Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .archives-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        
+        .archives-stats {
+            display: flex;
+            gap: 20px;
+            background: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-item .label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+        
+        .stat-item .value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .archived-row {
+            background-color: #f8f9fa;
+        }
+        
+        .archived-row td:first-child {
+            position: relative;
+        }
+        
+        .archived-row td:first-child::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #95a5a6;
+        }
+        
+        .restore-btn {
+            background: #2ecc71;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 5px;
+            transition: background 0.2s;
+        }
+        
+        .restore-btn:hover {
+            background: #27ae60;
+        }
+        
+        .delete-permanent-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .delete-permanent-btn:hover {
+            background: #c0392b;
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        
+        .pagination button.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .archive-info {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin-top: 5px;
+        }
+        
+        .search-box {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 250px;
+        }
+        
+        .filter-options {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-archive"></i> Archived Bookings</h1>
+            <p>View and manage archived bookings (older than 7 days)</p>
+        </div>
+    </header>
+
+    <nav>
+        <div class="container">
+            <ul>
+                <li><a href="admin.html"><i class="fas fa-arrow-left"></i> Back to Dashboard</a></li>
+                <li><a href="admin-announcements.html"><i class="fas fa-bullhorn"></i> Announcements</a></li>
+                <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutors</a></li>
+                <li><a href="admin-subjects.html"><i class="fas fa-book-open"></i> Subjects</a></li>
+                <li class="admin-login-item"><a href="index.html" class="admin-login-btn"><i class="fas fa-home"></i> Home</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="container">
+        <div class="archives-header">
+            <h2><i class="fas fa-folder-open"></i> Archived Bookings</h2>
+            
+            <div class="filter-options">
+                <input type="text" class="search-box" id="searchInput" placeholder="Search by tutor, subject, number...">
+                <button class="btn" onclick="fetchArchivedBookings()" style="padding: 8px 16px;">
+                    <i class="fas fa-search"></i> Search
+                </button>
+                <button class="btn" onclick="clearOldArchives()" style="background: #e74c3c; padding: 8px 16px;">
+                    <i class="fas fa-trash-alt"></i> Clear Old
+                </button>
+            </div>
+        </div>
+
+        <div class="archives-stats" id="archiveStats">
+            <div class="stat-item">
+                <div class="label">Total Archived</div>
+                <div class="value" id="totalArchived">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Pages</div>
+                <div class="value" id="totalPages">0</div>
+            </div>
+            <div class="stat-item">
+                <div class="label">Oldest</div>
+                <div class="value" id="oldestDate">-</div>
+            </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table id="archived-bookings-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Tutor</th>
+                        <th>Subject</th>
+                        <th>User Number</th>
+                        <th>Schedule</th>
+                        <th>Created At</th>
+                        <th>Archived At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div class="pagination" id="pagination"></div>
+
+        <section class="logout-section container">
+            <button class="btn" id="logout-btn" style="background: #e74c3c;">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>© 2025 LearnHub. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('adminToken');
+            
+            if (!token) {
+                window.location.href = 'admin_login.html';
+                return;
+            }
+            
+            let currentPage = 1;
+            let totalPages = 1;
+            
+            // Fetch archived bookings
+            async function fetchArchivedBookings(page = 1) {
+                try {
+                    const response = await fetch(`/api/admin/archived-bookings?page=${page}&limit=20`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('adminToken');
+                        window.location.href = 'admin_login.html';
+                        return;
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(data.error || 'Failed to fetch archives');
+                    }
+                    
+                    displayArchivedBookings(data.bookings);
+                    updatePagination(data.pagination);
+                    updateStats(data.pagination);
+                    
+                } catch (error) {
+                    console.error('Error fetching archived bookings:', error);
+                    showNotification('Error fetching archived bookings', 'error');
+                }
+            }
+            
+            // Display archived bookings
+            function displayArchivedBookings(bookings) {
+                const tbody = document.querySelector('#archived-bookings-table tbody');
+                tbody.innerHTML = '';
+                
+                if (!bookings || bookings.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-folder-open" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                                <p>No archived bookings found</p>
+                                <p><small>Bookings older than 7 days will appear here</small></p>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                bookings.forEach(booking => {
+                    const row = document.createElement('tr');
+                    row.className = 'archived-row';
+                    
+                    const createdDate = new Date(booking.created_at);
+                    const archivedDate = new Date(booking.archived_at);
+                    const scheduleDate = new Date(booking.schedule);
+                    
+                    row.innerHTML = `
+                        <td>${booking.id}</td>
+                        <td>${booking.tutor_name || 'Unknown'}</td>
+                        <td>${booking.subject}</td>
+                        <td>${booking.user_number}</td>
+                        <td>${scheduleDate.toLocaleString()}</td>
+                        <td>${createdDate.toLocaleString()}</td>
+                        <td>
+                            ${archivedDate.toLocaleString()}
+                            <div class="archive-info">Age: ${getDaysAgo(createdDate)} days</div>
+                        </td>
+                        <td>
+                            <button class="restore-btn" onclick="restoreBooking(${booking.id})">
+                                <i class="fas fa-undo"></i> Restore
+                            </button>
+                            <button class="delete-permanent-btn" onclick="deletePermanently(${booking.id})">
+                                <i class="fas fa-trash-alt"></i> Delete
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }
+            
+            // Calculate days ago
+            function getDaysAgo(date) {
+                const now = new Date();
+                const diffTime = Math.abs(now - date);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays;
+            }
+            
+            // Update pagination
+            function updatePagination(pagination) {
+                currentPage = pagination.page;
+                totalPages = pagination.totalPages;
+                
+                const paginationDiv = document.getElementById('pagination');
+                let html = '';
+                
+                html += `<button onclick="changePage(1)" ${currentPage === 1 ? 'disabled' : ''}>« First</button>`;
+                html += `<button onclick="changePage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>‹ Prev</button>`;
+                
+                for (let i = 1; i <= totalPages; i++) {
+                    if (i === currentPage || 
+                        (i >= currentPage - 2 && i <= currentPage + 2) ||
+                        i === 1 || i === totalPages) {
+                        html += `<button onclick="changePage(${i})" class="${i === currentPage ? 'active' : ''}">${i}</button>`;
+                    } else if (i === currentPage - 3 || i === currentPage + 3) {
+                        html += `<button disabled>...</button>`;
+                    }
+                }
+                
+                html += `<button onclick="changePage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next ›</button>`;
+                html += `<button onclick="changePage(${totalPages})" ${currentPage === totalPages ? 'disabled' : ''}>Last »</button>`;
+                
+                paginationDiv.innerHTML = html;
+            }
+            
+            // Update stats
+            function updateStats(pagination) {
+                document.getElementById('totalArchived').textContent = pagination.total;
+                document.getElementById('totalPages').textContent = pagination.totalPages;
+                
+                // Get oldest date from table
+                const rows = document.querySelectorAll('#archived-bookings-table tbody tr');
+                if (rows.length > 0) {
+                    const dateCells = rows[rows.length - 1].querySelectorAll('td');
+                    if (dateCells.length >= 6) {
+                        document.getElementById('oldestDate').textContent = dateCells[5].textContent.split(',')[0];
+                    }
+                }
+            }
+            
+            // Change page
+            window.changePage = function(page) {
+                if (page >= 1 && page <= totalPages) {
+                    fetchArchivedBookings(page);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            };
+            
+            // Restore booking
+            window.restoreBooking = async function(id) {
+                if (!confirm('Restore this booking to the main table?')) return;
+                
+                try {
+                    const response = await fetch(`/api/admin/restore-archived-booking/${id}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showNotification('Booking restored successfully', 'success');
+                        fetchArchivedBookings(currentPage);
+                    } else {
+                        showNotification(data.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error restoring booking:', error);
+                    showNotification('Error restoring booking', 'error');
+                }
+            };
+            
+            // Delete permanently
+            window.deletePermanently = async function(id) {
+                if (!confirm('Delete this archived booking permanently? This cannot be undone.')) return;
+                
+                try {
+                    const response = await fetch(`/api/admin/archived-bookings/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showNotification('Archived booking deleted permanently', 'success');
+                        fetchArchivedBookings(currentPage);
+                    } else {
+                        showNotification(data.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error deleting archived booking:', error);
+                    showNotification('Error deleting archived booking', 'error');
+                }
+            };
+            
+            // Clear old archives
+            window.clearOldArchives = async function() {
+                const days = prompt('Delete archives older than how many days?', '90');
+                if (!days) return;
+                
+                if (!confirm(`Delete all archives older than ${days} days? This cannot be undone.`)) return;
+                
+                try {
+                    const response = await fetch('/api/admin/clear-old-archives', {
+                        method: 'DELETE',
+                        headers: { 
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ olderThanDays: parseInt(days) })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showNotification(`Deleted ${data.deleted} old archive(s)`, 'success');
+                        fetchArchivedBookings(1);
+                    } else {
+                        showNotification(data.error, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error clearing archives:', error);
+                    showNotification('Error clearing archives', 'error');
+                }
+            };
+            
+            // Search functionality
+            document.getElementById('searchInput').addEventListener('keyup', (e) => {
+                if (e.key === 'Enter') {
+                    searchBookings();
+                }
+            });
+            
+            window.searchBookings = async function() {
+                const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+                
+                // Simple client-side search for now
+                const rows = document.querySelectorAll('#archived-bookings-table tbody tr');
+                rows.forEach(row => {
+                    const text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(searchTerm) ? '' : 'none';
+                });
+            };
+            
+            // Show notification
+            function showNotification(message, type = 'info') {
+                const notification = document.createElement('div');
+                notification.className = 'notification';
+                notification.style.cssText = `
+                    position: fixed;
+                    top: 80px;
+                    right: 20px;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    color: white;
+                    z-index: 1000;
+                    max-width: 300px;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    animation: slideIn 0.3s ease-out;
+                    background: ${type === 'success' ? '#2ecc71' : type === 'error' ? '#e74c3c' : '#3498db'};
+                `;
+                notification.innerHTML = `
+                    ${message}
+                    <span style="margin-left: 10px; cursor: pointer; font-weight: bold;" onclick="this.parentElement.remove()">&times;</span>
+                `;
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 5000);
+            }
+            
+            // Add animation styles
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideIn {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Logout
+            document.getElementById('logout-btn').addEventListener('click', (e) => {
+                e.preventDefault();
+                if (confirm('Are you sure you want to logout?')) {
+                    localStorage.removeItem('adminToken');
+                    window.location.href = 'admin_login.html';
+                }
+            });
+            
+            // Initial fetch
+            fetchArchivedBookings(1);
+            
+            // Request notification permission
+            if ('Notification' in window && Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+        });
+    </script>
+</body>
+</html>
