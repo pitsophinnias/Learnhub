@@ -37,12 +37,10 @@ const authenticateToken = (req, res, next) => {
 
 //PostgreSQL Connection
 const pool = new Pool({
-    user: 'postgres',
-    host: 'localhost',
-    database: 'learnhub_local',
-    password: 'pitso2003',           // ← your real password
-    port: 5432,
-    ssl: false,
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.NODE_ENV === 'production' 
+        ? { rejectUnauthorized: false } 
+        : false
 });
 
 pool.connect((err, client, release) => {
