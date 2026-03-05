@@ -465,7 +465,7 @@ async function loadHighSchoolSubjects() {
             console.error('High school subjects container not found!');
             return;
         }
-        
+
         if (!subjects || subjects.length === 0) {
             container.innerHTML = `
                 <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
@@ -476,21 +476,24 @@ async function loadHighSchoolSubjects() {
             `;
             return;
         }
-        
+
         container.innerHTML = subjects.map(subject => {
             const subjectName = subject.name.toLowerCase();
+            // Ensure tutor_count is a number and display properly
+            const tutorCount = parseInt(subject.tutor_count) || 0;
+            
             return `
-                <div class="subject-card" data-subject="${subjectName}">
+                <div class="subject-card" data-subject="${subjectName}" data-id="${subject.id}">
                     <i class="${subject.icon || 'fas fa-book'}"></i>
                     <h3>${escapeHtml(subject.name)}</h3>
                     <p>${escapeHtml(subject.description || 'High school tutoring available')}</p>
-                    <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
-                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('high', '${subjectName}')">
-                        Select Tutor
+                    <p><small><i class="fas fa-users"></i> ${tutorCount} tutor(s) available</small></p>
+                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('high', '${subjectName}')" ${tutorCount === 0 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>
+                        ${tutorCount === 0 ? 'No Tutors' : 'Select Tutor'}
                     </button>
                 </div>
             `;
-        }).join('');
+            }).join('');
         
     } catch (error) {
         console.error('Error loading high school subjects:', error);
@@ -506,7 +509,7 @@ async function loadHighSchoolSubjects() {
                     </button>
                 </div>
             `;
-        }
+            }
     }
 }
 
@@ -531,7 +534,7 @@ async function loadPrimarySchoolSubjects() {
             console.error('Primary school subjects container not found!');
             return;
         }
-        
+
         if (!subjects || subjects.length === 0) {
             container.innerHTML = `
                 <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
@@ -542,21 +545,24 @@ async function loadPrimarySchoolSubjects() {
             `;
             return;
         }
-        
+
         container.innerHTML = subjects.map(subject => {
             const subjectName = subject.name.toLowerCase();
+            // Ensure tutor_count is a number and display properly
+            const tutorCount = parseInt(subject.tutor_count) || 0;
+            
             return `
-                <div class="subject-card" data-subject="${subjectName}">
+                <div class="subject-card" data-subject="${subjectName}" data-id="${subject.id}">
                     <i class="${subject.icon || 'fas fa-book'}"></i>
                     <h3>${escapeHtml(subject.name)}</h3>
                     <p>${escapeHtml(subject.description || 'Primary school tutoring available')}</p>
-                    <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
-                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('primary', '${subjectName}')">
-                        Select Tutor
+                    <p><small><i class="fas fa-users"></i> ${tutorCount} tutor(s) available</small></p>
+                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('primary', '${subjectName}')" ${tutorCount === 0 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : ''}>
+                        ${tutorCount === 0 ? 'No Tutors' : 'Select Tutor'}
                     </button>
                 </div>
             `;
-        }).join('');
+            }).join('');
         
     } catch (error) {
         console.error('Error loading primary school subjects:', error);

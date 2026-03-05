@@ -775,14 +775,14 @@ app.get('/api/primary/subjects', async (req, res) => {
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
             LEFT JOIN tutors t ON ts.tutor_id = t.id
             WHERE s.is_available = TRUE 
-              AND s.level = 'primary'
+              AND (s.level = 'primary' OR s.level = 'both')
             GROUP BY s.id
             ORDER BY s.name
         `);
         res.status(200).json(result.rows);
     } catch (error) {
-        console.error('Error fetching primary subjects:', error.message);
-        res.status(500).json({ error: 'Error fetching primary subjects' });
+        console.error('Error fetching primary school subjects:', error.message);
+        res.status(500).json({ error: 'Error fetching primary school subjects' });
     }
 });
 
@@ -796,7 +796,9 @@ app.get('/api/high/subjects', async (req, res) => {
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
             LEFT JOIN tutors t ON ts.tutor_id = t.id
             WHERE s.is_available = TRUE 
-              AND s.level = 'high'
+              AND (s.level = 'high' OR s.level = 'both')
+              AND (t.is_active = TRUE OR t.is_active IS NULL)
+              AND (t.level IN ('high', 'both') OR t.level IS NULL)
             GROUP BY s.id
             ORDER BY s.name
         `);
@@ -808,22 +810,25 @@ app.get('/api/high/subjects', async (req, res) => {
 });
 
 // Get all subjects for admin (Protected)
-app.get('/api/admin/subjects', authenticateToken, async (req, res) => {
+app.get('/api/primary/subjects', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count,
-                   STRING_AGG(DISTINCT t.name, ', ') as tutor_names
+                   COUNT(DISTINCT ts.tutor_id) as tutor_count
             FROM subjects s
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
             LEFT JOIN tutors t ON ts.tutor_id = t.id
+            WHERE s.is_available = TRUE 
+              AND (s.level = 'primary' OR s.level = 'both')
+              AND (t.is_active = TRUE OR t.is_active IS NULL)
+              AND (t.level IN ('primary', 'both') OR t.level IS NULL)
             GROUP BY s.id
             ORDER BY s.name
         `);
         res.status(200).json(result.rows);
     } catch (error) {
-        console.error('Error fetching subjects for admin:', error.message);
-        res.status(500).json({ error: 'Error fetching subjects for admin' });
+        console.error('Error fetching primary school subjects:', error.message);
+        res.status(500).json({ error: 'Error fetching primary school subjects' });
     }
 });
 
