@@ -49,9 +49,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-	// Setup smooth scrolling for navigation
+    // Setup smooth scrolling for navigation
     setupSmoothScrolling(); 
-	
+    
     // Calendar initialization
     initializeCalendar();
     startCountdown();
@@ -102,7 +102,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load dynamic content
     loadAnnouncements();
-    loadSubjects();
+    loadHighSchoolSubjects(); // Load high school subjects
+    loadPrimarySchoolSubjects(); // Load primary school subjects
     
     // Initialize tutor modal
     initializeTutorModal();
@@ -131,7 +132,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ==============================================
-// PAYMENT DEADLINE FUNCTIONS
+// SMOOTH SCROLLING
 // ==============================================
 
 function setupSmoothScrolling() {
@@ -167,6 +168,11 @@ function setupSmoothScrolling() {
         });
     });
 }
+
+// ==============================================
+// PAYMENT DEADLINE FUNCTIONS
+// ==============================================
+
 // Initialize countdown for payment deadlines
 function startCountdown() {
     // Find the next upcoming deadline
@@ -439,85 +445,63 @@ async function loadAnnouncements() {
 }
 
 // ==============================================
-// SUBJECTS FUNCTIONS
+// HIGH SCHOOL SUBJECTS FUNCTIONS
 // ==============================================
 
-async function loadSubjects() {
+async function loadHighSchoolSubjects() {
     try {
-        console.log('Loading subjects...');
-        const response = await fetch('/api/subjects');
+        console.log('Loading high school subjects...');
+        const response = await fetch('/api/high/subjects');
         
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const subjects = await response.json();
-        console.log('Subjects received:', subjects);
+        console.log('High school subjects received:', subjects);
         
-        // Check which container exists
-        let container = document.getElementById('subjects-container');
+        const container = document.getElementById('high-subjects-container');
         if (!container) {
-            container = document.querySelector('.subjects-grid');
-        }
-        
-        if (!container) {
-            console.error('Subjects container not found!');
+            console.error('High school subjects container not found!');
             return;
         }
         
         if (!subjects || subjects.length === 0) {
             container.innerHTML = `
                 <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
-                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
-                    <h3>No Subjects Available</h3>
-                    <p>Check back later for available subjects.</p>
+                    <i class="fas fa-graduation-cap" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No High School Subjects Available</h3>
+                    <p>Check back later for available high school subjects.</p>
                 </div>
             `;
             return;
         }
         
-        // Filter available subjects
-        const availableSubjects = subjects.filter(subject => subject.is_available !== false);
-        
-        if (availableSubjects.length === 0) {
-            container.innerHTML = `
-                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
-                    <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
-                    <h3>No Subjects Available</h3>
-                    <p>All subjects are currently unavailable.</p>
-                </div>
-            `;
-            return;
-        }
-        
-        // Create subject cards
-        container.innerHTML = availableSubjects.map(subject => {
+        container.innerHTML = subjects.map(subject => {
             const subjectName = subject.name.toLowerCase();
             return `
                 <div class="subject-card" data-subject="${subjectName}">
                     <i class="${subject.icon || 'fas fa-book'}"></i>
                     <h3>${escapeHtml(subject.name)}</h3>
-                    <p>${escapeHtml(subject.description || 'Expert tutoring available')}</p>
+                    <p>${escapeHtml(subject.description || 'High school tutoring available')}</p>
                     <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
-                    <button class="select-btn" onclick="fetchTutorsBySubject('${subjectName}')">
-                        Select
+                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('high', '${subjectName}')">
+                        Select Tutor
                     </button>
                 </div>
             `;
         }).join('');
         
-        console.log(`Displayed ${availableSubjects.length} subjects`);
-        
     } catch (error) {
-        console.error('Error loading subjects:', error);
-        const container = document.getElementById('subjects-container') || document.querySelector('.subjects-grid');
+        console.error('Error loading high school subjects:', error);
+        const container = document.getElementById('high-subjects-container');
         if (container) {
             container.innerHTML = `
                 <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
                     <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
-                    <h3>Error Loading Subjects</h3>
-                    <p>${error.message}</p>
-                    <button onclick="loadSubjects()" class="btn" style="margin-top: 10px;">
+                    <h3>Error Loading High School Subjects</h3>
+                    <p>Please try again later.</p>
+                    <button onclick="loadHighSchoolSubjects()" class="btn" style="margin-top: 10px;">
                         <i class="fas fa-sync-alt"></i> Retry
                     </button>
                 </div>
@@ -526,31 +510,100 @@ async function loadSubjects() {
     }
 }
 
-async function fetchTutorsBySubject(subject) {
-    console.log('Fetching tutors for subject:', subject);
+// ==============================================
+// PRIMARY SCHOOL SUBJECTS FUNCTIONS
+// ==============================================
+
+async function loadPrimarySchoolSubjects() {
+    try {
+        console.log('Loading primary school subjects...');
+        const response = await fetch('/api/primary/subjects');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const subjects = await response.json();
+        console.log('Primary school subjects received:', subjects);
+        
+        const container = document.getElementById('primary-subjects-container');
+        if (!container) {
+            console.error('Primary school subjects container not found!');
+            return;
+        }
+        
+        if (!subjects || subjects.length === 0) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-child" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Primary School Subjects Available</h3>
+                    <p>Check back later for available primary school subjects.</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = subjects.map(subject => {
+            const subjectName = subject.name.toLowerCase();
+            return `
+                <div class="subject-card" data-subject="${subjectName}">
+                    <i class="${subject.icon || 'fas fa-book'}"></i>
+                    <h3>${escapeHtml(subject.name)}</h3>
+                    <p>${escapeHtml(subject.description || 'Primary school tutoring available')}</p>
+                    <p><small><i class="fas fa-users"></i> ${subject.tutor_count || 0} tutor(s) available</small></p>
+                    <button class="select-btn" onclick="fetchTutorsByLevelAndSubject('primary', '${subjectName}')">
+                        Select Tutor
+                    </button>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (error) {
+        console.error('Error loading primary school subjects:', error);
+        const container = document.getElementById('primary-subjects-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="subject-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Error Loading Primary School Subjects</h3>
+                    <p>Please try again later.</p>
+                    <button onclick="loadPrimarySchoolSubjects()" class="btn" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            `;
+        }
+    }
+}
+
+// ==============================================
+// TUTOR FETCHING FUNCTIONS
+// ==============================================
+
+async function fetchTutorsByLevelAndSubject(level, subject) {
+    console.log(`Fetching ${level} tutors for subject:`, subject);
     
     try {
         const cleanSubject = subject.toLowerCase().trim();
-        const response = await fetch(`/api/tutors/${cleanSubject}`);
+        const response = await fetch(`/api/tutors/${level}/${cleanSubject}`);
         
         if (!response.ok) {
             throw new Error(`Failed to fetch tutors: ${response.status}`);
         }
         
         const tutors = await response.json();
-        console.log(`Found ${tutors.length} tutors for ${subject}`);
+        console.log(`Found ${tutors.length} ${level} tutors for ${subject}`);
         
         if (tutors.length === 0) {
-            showNotification(`No tutors available for ${subject} at the moment.`, 'info');
+            showNotification(`No ${level} tutors available for ${subject} at the moment.`, 'info');
             return;
         }
         
-        showTutorModalWithData(subject, tutors);
+        showTutorModalWithData(subject, tutors, level);
         
     } catch (error) {
-        console.error('Error fetching tutors by subject:', error);
+        console.error('Error fetching tutors:', error);
         showNotification('Error loading tutors. Please try again.', 'error');
-        showTutorModalWithData(subject, []);
     }
 }
 
@@ -580,7 +633,7 @@ function initializeTutorModal() {
     }
 }
 
-function showTutorModalWithData(subject, tutors) {
+function showTutorModalWithData(subject, tutors, level = 'high') {
     const modal = document.getElementById('tutorModal');
     const modalTitle = document.getElementById('modalTitle');
     const tutorList = document.getElementById('tutor-list');
@@ -592,21 +645,23 @@ function showTutorModalWithData(subject, tutors) {
         return;
     }
     
-    // Set modal title
-    modalTitle.textContent = `Select Tutor for ${subject.charAt(0).toUpperCase() + subject.slice(1)}`;
+    // Set modal title with level
+    const levelDisplay = level === 'primary' ? 'Primary School' : 'High School';
+    modalTitle.textContent = `Select ${levelDisplay} Tutor for ${subject.charAt(0).toUpperCase() + subject.slice(1)}`;
     
     // Clear previous selection
     clearModalSelection();
     
-    // Store current subject
+    // Store current subject and level
     modal.dataset.currentSubject = subject;
+    modal.dataset.currentLevel = level;
     
     if (tutors.length === 0) {
         tutorList.innerHTML = `
             <div style="text-align: center; padding: 40px;">
                 <i class="fas fa-user-slash" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
                 <h3>No Tutors Available</h3>
-                <p>No tutors are currently available for ${subject}.</p>
+                <p>No ${levelDisplay} tutors are currently available for ${subject}.</p>
                 <p>Please check back later or contact us.</p>
             </div>
         `;
@@ -685,6 +740,7 @@ function clearModalSelection() {
         delete modal.dataset.selectedTutorId;
         delete modal.dataset.selectedTutorName;
         delete modal.dataset.currentSubject;
+        delete modal.dataset.currentLevel;
     }
     const scheduleInput = document.getElementById('schedule');
     if (scheduleInput) {
@@ -700,6 +756,7 @@ async function confirmBooking() {
     const tutorId = modal.dataset.selectedTutorId;
     const tutorName = modal.dataset.selectedTutorName;
     const subject = modal.dataset.currentSubject;
+    const level = modal.dataset.currentLevel || 'high';
     const scheduleInput = document.getElementById('schedule');
     
     if (!tutorId || !subject) {
@@ -733,7 +790,8 @@ async function confirmBooking() {
                 tutorId: parseInt(tutorId),
                 subject: subject,
                 userNumber: userNumber,
-                schedule: scheduleInput.value
+                schedule: scheduleInput.value,
+                level: level
             })
         });
         
@@ -819,7 +877,7 @@ function updateCalendar() {
         paymentDeadlines.forEach(deadline => {
             if (currentDateObj.getDate() === deadline.date.getDate() &&
                 currentDateObj.getMonth() === deadline.date.getMonth()) {
-                dayElement.classList.add('exam-day'); // Using existing class for styling
+                dayElement.classList.add('exam-day');
                 dayElement.title = deadline.name;
             }
         });
@@ -981,6 +1039,7 @@ if (!document.querySelector('#notification-styles')) {
 
 // Make functions globally available
 window.loadAnnouncements = loadAnnouncements;
-window.loadSubjects = loadSubjects;
-window.fetchTutorsBySubject = fetchTutorsBySubject;
+window.loadHighSchoolSubjects = loadHighSchoolSubjects;
+window.loadPrimarySchoolSubjects = loadPrimarySchoolSubjects;
+window.fetchTutorsByLevelAndSubject = fetchTutorsByLevelAndSubject;
 window.confirmBooking = confirmBooking;

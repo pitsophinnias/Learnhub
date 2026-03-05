@@ -46,17 +46,27 @@
                         </div>
                     </div>
                     
+                    <!-- LEVEL FIELD - Add this new section -->
+                    <div class="form-group">
+                        <label for="tutorLevel"><i class="fas fa-school"></i> Tutor Level</label>
+                        <select id="tutorLevel" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                            <option value="high">High School</option>
+                            <option value="primary">Primary School</option>
+                            <option value="both">Both (Primary & High School)</option>
+                        </select>
+                    </div>
+                    
                     <div class="form-group">
                         <label for="tutorSubjects"><i class="fas fa-book"></i> Subjects (comma-separated)</label>
-                        <input type="text" id="tutorSubjects" placeholder="e.g., mathematics, physics, chemistry" required>
+                        <input type="text" id="tutorSubjects" placeholder="e.g., mathematics, english, science" required>
                         <small style="color: #666;">Enter subjects separated by commas</small>
                     </div>
                     
                     <div class="form-group">
                         <label for="tutorExperience"><i class="fas fa-graduation-cap"></i> Experience/Qualification</label>
-                        <input type="text" id="tutorExperience" placeholder="e.g., Bsc in Mathematics and Physics" required>
+                        <input type="text" id="tutorExperience" placeholder="e.g., B.Ed in Primary Education" required>
                     </div>
-				                    
+                    
                     <div class="form-group">
                         <label for="tutorImage"><i class="fas fa-image"></i> Image URL</label>
                         <input type="text" id="tutorImage" placeholder="/images/tutor-name.jpg" required>

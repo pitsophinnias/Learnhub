@@ -6,7 +6,6 @@
     <title>Admin Dashboard - LearnHub</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="https://kit.fontawesome.com/64d58efce2.js" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>
@@ -54,11 +53,17 @@
         </section>
 
         <section id="bookings">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap;">
                 <h2><i class="fas fa-calendar-check"></i> Recent Bookings</h2>
-                <a href="#bookings" class="btn" onclick="fetchBookings()" style="padding: 8px 16px; font-size: 0.9rem;">
-                    <i class="fas fa-sync-alt"></i> Refresh
-                </a>
+                <div style="display: flex; gap: 10px;">
+                    <div class="booking-tabs">
+                        <button class="tab-btn active" onclick="switchBookingTab('high')">High School</button>
+                        <button class="tab-btn" onclick="switchBookingTab('primary')">Primary School</button>
+                    </div>
+                    <a href="#bookings" class="btn" onclick="fetchBookingsByLevel()" style="padding: 8px 16px; font-size: 0.9rem;">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </a>
+                </div>
             </div>
             <div style="overflow-x: auto;">
                 <table id="bookings-table">

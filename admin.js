@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const token = localStorage.getItem('adminToken');
     const ws = new WebSocket(`ws${window.location.protocol === 'https:' ? 's' : ''}://${window.location.host}`);
     let adminId = null;
+    let currentBookingLevel = 'high'; // Default to high school
 
     // Redirect to login if no token
     if (!token) {
@@ -34,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Refresh relevant sections based on notification type
             if (notification.type === 'booking' || notification.type === 'booking_deleted' || notification.type === 'bookings_archived' || notification.type === 'booking_restored') {
-                fetchBookings();
+                fetchBookingsByLevel(currentBookingLevel);
                 updateStats();
             } else if (notification.type === 'contact' || notification.type === 'contact_deleted') {
                 fetchContacts();
@@ -89,10 +90,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 5000);
     }
 
-    // Fetch and display recent bookings (last 7 days)
-    async function fetchBookings() {
+    // Function to switch between booking tabs
+    window.switchBookingTab = function(level) {
+        currentBookingLevel = level;
+        
+        // Update tab buttons
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        // Find the clicked button and make it active
+        event.target.classList.add('active');
+        
+        // Fetch bookings for selected level
+        fetchBookingsByLevel(level);
+    };
+
+    // Fetch bookings by level
+    async function fetchBookingsByLevel(level) {
         try {
-            const response = await fetch('/api/bookings', {
+            const response = await fetch(`/api/admin/bookings/${level}`, {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
             
@@ -127,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <tr>
                         <td colspan="7" style="text-align: center; padding: 20px;">
                             <i class="fas fa-calendar-times" style="font-size: 2rem; color: #ddd; margin-bottom: 10px;"></i>
-                            <p>No recent bookings found (last 7 days)</p>
+                            <p>No recent ${level} school bookings found (last 7 days)</p>
                             <p><small><a href="admin-archives.html" style="color: #3498db;">View Archived Bookings</a></small></p>
                         </td>
                     </tr>
@@ -161,6 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification('Error fetching bookings');
         }
     }
+    window.fetchBookingsByLevel = fetchBookingsByLevel;
+
+
 
     // Fetch and display contacts
     async function fetchContacts() {
@@ -216,17 +235,29 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    window.fetchContacts = fetchContacts;
+
     // Update all stats
     async function updateStats() {
         try {
-            // Fetch bookings count (total including archived)
-            const bookingsRes = await fetch('/api/bookings', {
+            // Fetch bookings count by level
+            const highBookingsRes = await fetch('/api/admin/bookings/high', {
                 headers: { 'Authorization': `Bearer ${token}` },
             });
-            if (bookingsRes.ok) {
-                const bookings = await bookingsRes.json();
-                document.getElementById('total-bookings').textContent = Array.isArray(bookings) ? bookings.length : 0;
+            let totalBookings = 0;
+            if (highBookingsRes.ok) {
+                const highBookings = await highBookingsRes.json();
+                totalBookings += Array.isArray(highBookings) ? highBookings.length : 0;
             }
+            
+            const primaryBookingsRes = await fetch('/api/admin/bookings/primary', {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (primaryBookingsRes.ok) {
+                const primaryBookings = await primaryBookingsRes.json();
+                totalBookings += Array.isArray(primaryBookings) ? primaryBookings.length : 0;
+            }
+            document.getElementById('total-bookings').textContent = totalBookings;
             
             // Fetch archived bookings count
             try {
@@ -235,7 +266,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 if (archivedRes.ok) {
                     const archivedData = await archivedRes.json();
-                    // You could display this somewhere if needed
                     console.log(`Total archived bookings: ${archivedData.pagination?.total || 0}`);
                 }
             } catch (e) {
@@ -308,7 +338,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (response.ok) {
                     showNotification(`${type.charAt(0).toUpperCase() + type.slice(1)} deleted successfully`);
                     if (type === 'booking') {
-                        fetchBookings();
+                        fetchBookingsByLevel(currentBookingLevel);
                     } else {
                         fetchContacts();
                     }
@@ -350,11 +380,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // ==============================================
-    // ARCHIVE FUNCTIONS
-    // ==============================================
-
-    // Trigger archiving manually
+    // Archive functions
     async function triggerArchive() {
         if (!confirm('Archive all bookings older than 7 days?')) return;
         
@@ -372,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (response.ok) {
                 showNotification(`Archived ${data.archived} booking(s)`, 'success');
-                fetchBookings(); // Refresh the table
+                fetchBookingsByLevel(currentBookingLevel);
                 updateStats();
             } else {
                 showNotification(data.error, 'error');
@@ -391,7 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const headerDiv = bookingsSection.querySelector('div');
         if (!headerDiv) return;
         
-        // Check if buttons already exist
         if (document.getElementById('archive-btn')) return;
         
         const archiveBtn = document.createElement('a');
@@ -421,17 +446,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const quickStats = document.querySelector('#quick-stats .announcement-card:first-child');
         if (!quickStats) return;
         
-        // Add small archive link under total bookings
         const archiveInfo = document.createElement('p');
         archiveInfo.style.cssText = 'font-size: 0.8rem; margin-top: 5px;';
         archiveInfo.innerHTML = '<a href="admin-archives.html" style="color: #7f8c8d;"><i class="fas fa-archive"></i> View Archives</a>';
         
         quickStats.appendChild(archiveInfo);
     }
-
-    // ==============================================
-    // END ARCHIVE FUNCTIONS
-    // ==============================================
 
     // Request notification permission on page load
     if ('Notification' in window && Notification.permission === 'default') {
@@ -442,8 +462,8 @@ document.addEventListener('DOMContentLoaded', () => {
     addArchiveButton();
     addArchiveInfo();
 
-    // Initial fetch and stats update
-    fetchBookings();
+    // Initial fetch - default to high school
+    fetchBookingsByLevel('high');
     fetchContacts();
     updateStats();
     
@@ -454,7 +474,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('archived') === 'success') {
         showNotification('Bookings archived successfully', 'success');
-        // Clean up URL
         window.history.replaceState({}, document.title, window.location.pathname);
     } else if (urlParams.get('restored') === 'success') {
         showNotification('Booking restored successfully', 'success');

@@ -4,11 +4,13 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSubjects();
     setupForm();
     setupWebSocket();
+    addLevelFilter();
 });
 
 let currentSubjectId = null;
 let currentAssignments = new Set();
 let allTutors = [];
+let currentSubjectLevel = null;
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
 
 // Check authentication
@@ -53,14 +55,14 @@ async function loadSubjects() {
     }
 }
 
-// Display subjects in table
+// Display subjects in table with level badges
 function displaySubjects(subjects) {
     const tbody = document.getElementById('subjectsList');
     
     if (!subjects || subjects.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="6" style="text-align: center; padding: 40px;">
+                <td colspan="7" style="text-align: center; padding: 40px;">
                     <i class="fas fa-book" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
                     <h3>No Subjects Found</h3>
                     <p>Add your first subject using the form above.</p>
@@ -70,7 +72,20 @@ function displaySubjects(subjects) {
         return;
     }
     
-    tbody.innerHTML = subjects.map(subject => `
+    tbody.innerHTML = subjects.map(subject => {
+        // Determine level badge
+        let levelBadge = '';
+        if (subject.level === 'primary') {
+            levelBadge = '<span class="level-badge primary">Primary</span>';
+        } else if (subject.level === 'high') {
+            levelBadge = '<span class="level-badge high">High School</span>';
+        } else if (subject.level === 'both') {
+            levelBadge = '<span class="level-badge both">Both</span>';
+        } else {
+            levelBadge = '<span class="level-badge high">High School</span>'; // Default
+        }
+        
+        return `
         <tr data-id="${subject.id}">
             <td>${subject.id}</td>
             <td>
@@ -78,6 +93,7 @@ function displaySubjects(subjects) {
                     <i class="${subject.icon || 'fas fa-book'}" style="font-size: 1.5rem; color: #3498db;"></i>
                     <div>
                         <strong>${escapeHtml(subject.name)}</strong>
+                        <br>${levelBadge}
                     </div>
                 </div>
             </td>
@@ -95,7 +111,7 @@ function displaySubjects(subjects) {
             </td>
             <td>
                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
-                    <button onclick="openAssignModal(${subject.id}, '${escapeHtml(subject.name)}')" class="btn" style="padding: 5px 10px; font-size: 0.9rem;">
+                    <button onclick="openAssignModal(${subject.id}, '${escapeHtml(subject.name)}', '${subject.level || 'high'}')" class="btn" style="padding: 5px 10px; font-size: 0.9rem;">
                         <i class="fas fa-user-plus"></i> Assign
                     </button>
                     <button onclick="toggleSubjectStatus(${subject.id}, ${subject.is_available !== false})" class="btn" style="padding: 5px 10px; font-size: 0.9rem; background: ${subject.is_available === false ? '#2ecc71' : '#f39c12'};">
@@ -104,18 +120,23 @@ function displaySubjects(subjects) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
-// Setup subject form
+// Setup subject form with level
 function setupForm() {
     const form = document.getElementById('subjectForm');
+    
+    // Ensure level field exists
+    ensureSubjectLevelField();
+    
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
         
         const name = document.getElementById('subjectName').value.trim();
         const description = document.getElementById('subjectDescription').value.trim();
         const icon = document.getElementById('subjectIcon').value.trim();
+        const level = document.getElementById('subjectLevel').value;
         
         if (!name) {
             showNotification('Subject name is required', 'error');
@@ -130,7 +151,7 @@ function setupForm() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ name, description, icon })
+                body: JSON.stringify({ name, description, icon, level })
             });
             
             if (response.status === 401) {
@@ -145,6 +166,7 @@ function setupForm() {
                 showNotification('Subject added successfully!', 'success');
                 form.reset();
                 document.getElementById('subjectIcon').value = 'fas fa-book';
+                document.getElementById('subjectLevel').value = 'high'; // Reset to default
                 loadSubjects();
             } else {
                 showNotification(result.error || 'Error adding subject', 'error');
@@ -156,16 +178,86 @@ function setupForm() {
     });
 }
 
-// Open assign tutors modal
-async function openAssignModal(subjectId, subjectName) {
+// Ensure subject level field exists
+function ensureSubjectLevelField() {
+    const existingLevel = document.getElementById('subjectLevel');
+    if (!existingLevel) {
+        const nameGroup = document.querySelector('#subjectName').closest('.form-group');
+        const levelGroup = document.createElement('div');
+        levelGroup.className = 'form-group';
+        levelGroup.innerHTML = `
+            <label for="subjectLevel"><i class="fas fa-school"></i> Education Level</label>
+            <select id="subjectLevel" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                <option value="high">High School</option>
+                <option value="primary">Primary School</option>
+                <option value="both">Both (Primary & High School)</option>
+            </select>
+        `;
+        nameGroup.after(levelGroup);
+    }
+}
+
+// Add level filter to the page
+function addLevelFilter() {
+    const subjectsSection = document.querySelector('#subjectsTable');
+    if (!subjectsSection) return;
+    
+    const filterDiv = document.createElement('div');
+    filterDiv.style.cssText = 'margin-bottom: 20px; display: flex; gap: 10px; align-items: center;';
+    filterDiv.innerHTML = `
+        <label><i class="fas fa-filter"></i> Filter by Level:</label>
+        <select id="levelFilter" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            <option value="all">All Subjects</option>
+            <option value="high">High School</option>
+            <option value="primary">Primary School</option>
+            <option value="both">Both Levels</option>
+        </select>
+    `;
+    
+    subjectsSection.parentNode.insertBefore(filterDiv, subjectsSection);
+    
+    document.getElementById('levelFilter').addEventListener('change', function() {
+        filterSubjectsByLevel(this.value);
+    });
+}
+
+// Filter subjects by level
+function filterSubjectsByLevel(level) {
+    const rows = document.querySelectorAll('#subjectsList tr');
+    rows.forEach(row => {
+        if (level === 'all') {
+            row.style.display = '';
+            return;
+        }
+        
+        const levelBadge = row.querySelector('.level-badge');
+        if (levelBadge) {
+            const badgeText = levelBadge.textContent.toLowerCase();
+            if (badgeText.includes(level) || (level === 'both' && badgeText.includes('both'))) {
+                row.style.display = '';
+            } else {
+                row.style.display = 'none';
+            }
+        }
+    });
+}
+
+// Open assign tutors modal (updated to include subject level)
+async function openAssignModal(subjectId, subjectName, subjectLevel) {
     currentSubjectId = subjectId;
+    currentSubjectLevel = subjectLevel || 'high';
     currentAssignments.clear();
     
     document.getElementById('modalSubjectName').textContent = subjectName;
     document.getElementById('assignModal').style.display = 'block';
     
+    // Add level indicator to modal
+    const modalHeader = document.querySelector('#assignModal h3');
+    const levelDisplay = subjectLevel === 'primary' ? 'Primary' : subjectLevel === 'high' ? 'High School' : 'Both';
+    modalHeader.innerHTML = `<i class="fas fa-user-plus"></i> Assign ${levelDisplay} Tutors to ${subjectName}`;
+    
     try {
-        await loadAvailableTutors();
+        await loadAvailableTutors(subjectLevel);
         await loadCurrentAssignments();
         updateAvailableTutorsList();
     } catch (error) {
@@ -174,10 +266,10 @@ async function openAssignModal(subjectId, subjectName) {
     }
 }
 
-// Load available tutors
-async function loadAvailableTutors() {
+// Load available tutors (filtered by level)
+async function loadAvailableTutors(level) {
     try {
-        console.log('Loading available tutors for assignment...');
+        console.log(`Loading available tutors for level: ${level}`);
         const token = localStorage.getItem('adminToken');
         
         if (!token) {
@@ -186,10 +278,8 @@ async function loadAvailableTutors() {
             return;
         }
         
-        // Debug: Log the token (first few chars)
-        console.log('Token exists:', token.substring(0, 20) + '...');
-        
-        const url = `${API_BASE}/api/admin/tutors?nocache=${Date.now()}`;
+        // Fetch tutors filtered by level
+        const url = `${API_BASE}/api/admin/tutors-by-level?level=${level}&nocache=${Date.now()}`;
         console.log('Fetching from:', url);
         
         const response = await fetch(url, {
@@ -199,24 +289,18 @@ async function loadAvailableTutors() {
             }
         });
         
-        console.log('Response status:', response.status);
-        
         if (response.status === 401) {
-            console.log('Unauthorized, redirecting to login');
             localStorage.removeItem('adminToken');
             window.location.href = 'admin_login.html';
             return;
         }
         
         if (!response.ok) {
-            console.error('API error:', response.status, response.statusText);
-            const errorText = await response.text();
-            console.error('Error response:', errorText);
             throw new Error(`API error: ${response.status}`);
         }
         
         const tutors = await response.json();
-        console.log(`Received ${tutors.length} tutors:`, tutors.map(t => ({id: t.id, name: t.name})));
+        console.log(`Received ${tutors.length} tutors for level ${level}`);
         
         allTutors = tutors;
         
@@ -249,7 +333,7 @@ async function loadCurrentAssignments() {
     }
 }
 
-// Update available tutors list
+// Update available tutors list with level badges
 function updateAvailableTutorsList() {
     const container = document.getElementById('availableTutors');
     const searchTerm = document.getElementById('tutorSearch').value.toLowerCase();
@@ -263,13 +347,25 @@ function updateAvailableTutorsList() {
         container.innerHTML = `
             <div style="text-align: center; padding: 20px; color: #666;">
                 <i class="fas fa-user-slash" style="font-size: 2rem; margin-bottom: 10px;"></i>
-                <p>No tutors found</p>
+                <p>No tutors found for this level</p>
+                <p><small>Try creating a tutor with the matching level first</small></p>
             </div>
         `;
         return;
     }
     
-    container.innerHTML = filteredTutors.map(tutor => `
+    container.innerHTML = filteredTutors.map(tutor => {
+        // Determine level badge for tutor
+        let tutorLevelBadge = '';
+        if (tutor.level === 'primary') {
+            tutorLevelBadge = '<span class="tutor-level-badge primary">Primary</span>';
+        } else if (tutor.level === 'high') {
+            tutorLevelBadge = '<span class="tutor-level-badge high">High</span>';
+        } else if (tutor.level === 'both') {
+            tutorLevelBadge = '<span class="tutor-level-badge both">Both</span>';
+        }
+        
+        return `
         <div class="tutor-assign-item ${currentAssignments.has(tutor.id.toString()) ? 'assigned' : ''}" 
              data-id="${tutor.id}"
              onclick="toggleTutorAssignment(${tutor.id})">
@@ -278,7 +374,10 @@ function updateAvailableTutorsList() {
                     <i class="fas fa-user"></i>
                 </div>
                 <div style="flex: 1;">
-                    <strong>${escapeHtml(tutor.name)}</strong><br>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <strong>${escapeHtml(tutor.name)}</strong>
+                        ${tutorLevelBadge}
+                    </div>
                     <small style="color: #666;">${escapeHtml(tutor.experience || 'No experience listed')}</small>
                 </div>
                 <div>
@@ -286,11 +385,11 @@ function updateAvailableTutorsList() {
                     <span style="font-weight: bold; color: #f39c12;">${tutor.rating || 0}</span>
                 </div>
                 <div>
-                    <i class="fas fa-check-circle" style="color: ${currentAssignments.has(tutor.id.toString()) ? '#2ecc71' : '#ddd'};"></i>
+                    <i class="fas fa-check-circle" style="color: ${currentAssignments.has(tutor.id.toString()) ? '#2ecc71' : '#ddd'}; font-size: 1.2rem;"></i>
                 </div>
             </div>
         </div>
-    `).join('');
+    `}).join('');
 }
 
 // Toggle tutor assignment
@@ -323,18 +422,23 @@ async function saveAssignments() {
         
         // Then add new assignments
         for (const tutorId of assignments) {
-            await fetch(`${API_BASE}/api/admin/tutors/${tutorId}/subjects/${currentSubjectId}`, {
+            const response = await fetch(`${API_BASE}/api/admin/tutors/${tutorId}/subjects/${currentSubjectId}`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 }
             });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                console.warn(`Warning for tutor ${tutorId}:`, error);
+            }
         }
         
         showNotification('Assignments saved successfully!', 'success');
         closeAssignModal();
-        loadSubjects();
+        loadSubjects(); // Refresh subjects list
     } catch (error) {
         console.error('Error saving assignments:', error);
         showNotification('Error saving assignments', 'error');
@@ -374,6 +478,7 @@ async function toggleSubjectStatus(subjectId, isCurrentlyActive) {
 // Close assign modal
 function closeAssignModal() {
     currentSubjectId = null;
+    currentSubjectLevel = null;
     currentAssignments.clear();
     document.getElementById('assignModal').style.display = 'none';
     document.getElementById('tutorSearch').value = '';
@@ -403,8 +508,8 @@ function setupWebSocket() {
     
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
-        if (data.type === 'subject_added') {
-            loadSubjects();
+        if (data.type === 'subject_added' || data.type === 'tutor_added' || data.type === 'tutor_deleted') {
+            loadSubjects(); // Refresh subjects when tutors change
         }
     };
 }
@@ -468,64 +573,6 @@ window.onclick = function(event) {
     }
 };
 
-// Temporary workaround - fetch all data
-async function loadAllData() {
-    try {
-        // Try to get tutors from a public endpoint first
-        const publicResponse = await fetch('/api/tutors/all');
-        if (publicResponse.ok) {
-            allTutors = await publicResponse.json();
-            console.log('Got tutors from public endpoint:', allTutors.length);
-            return;
-        }
-        
-        // If that fails, try to get from your existing bookings endpoint
-        const token = localStorage.getItem('adminToken');
-        if (token) {
-            const bookingsResponse = await fetch('/api/bookings', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (bookingsResponse.ok) {
-                const bookings = await bookingsResponse.json();
-                // Extract unique tutors from bookings
-                const tutorNames = [...new Set(bookings.map(b => b.tutor_name))];
-                allTutors = tutorNames.map(name => ({ id: name, name: name }));
-                console.log('Extracted tutors from bookings:', allTutors.length);
-            }
-        }
-    } catch (error) {
-        console.error('Error in workaround:', error);
-    }
-}
-
-// Add this function to manually sync
-async function syncTutorSubjects() {
-    try {
-        const token = localStorage.getItem('adminToken');
-        const response = await fetch(`${API_BASE}/api/admin/sync-tutor-subjects`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        const result = await response.json();
-        
-        if (response.ok) {
-            showNotification(`Sync completed: ${result.added} assignments added`, 'success');
-            // Reload subjects to show updated counts
-            loadSubjects();
-        } else {
-            showNotification(result.error || 'Sync failed', 'error');
-        }
-    } catch (error) {
-        console.error('Error syncing:', error);
-        showNotification('Error syncing tutor subjects', 'error');
-    }
-}
-
-// Add a sync button to your HTML (in admin-subjects.html, add this near the top):
-// <button onclick="syncTutorSubjects()" class="btn" style="float: right; margin-top: 20px;">
-//     <i class="fas fa-sync-alt"></i> Sync Tutor Subjects
-// </button>
-
 // Add CSS for the page
 const style = document.createElement('style');
 style.textContent = `
@@ -545,6 +592,30 @@ style.textContent = `
     .status-badge.inactive {
         background: #f8d7da;
         color: #721c24;
+    }
+    
+    .level-badge, .tutor-level-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: bold;
+        margin-left: 5px;
+    }
+    
+    .level-badge.primary, .tutor-level-badge.primary {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .level-badge.high, .tutor-level-badge.high {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .level-badge.both, .tutor-level-badge.both {
+        background: #d4edda;
+        color: #155724;
     }
     
     .tutor-assign-item {

@@ -62,7 +62,7 @@ function displayTutors(tutors) {
     if (!tutors || tutors.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" style="text-align: center; padding: 40px;">
+                <td colspan="8" style="text-align: center; padding: 40px;">
                     <i class="fas fa-chalkboard-teacher" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
                     <h3>No Tutors Found</h3>
                     <p>Add your first tutor using the form above.</p>
@@ -72,15 +72,31 @@ function displayTutors(tutors) {
         return;
     }
     
-    tbody.innerHTML = tutors.map(tutor => `
+    tbody.innerHTML = tutors.map(tutor => {
+        // Determine level badge
+        let levelBadge = '';
+        if (tutor.level === 'primary') {
+            levelBadge = '<span class="level-badge primary">Primary</span>';
+        } else if (tutor.level === 'high') {
+            levelBadge = '<span class="level-badge high">High School</span>';
+        } else if (tutor.level === 'both') {
+            levelBadge = '<span class="level-badge both">Both</span>';
+        } else {
+            levelBadge = '<span class="level-badge high">High School</span>'; // Default
+        }
+        
+        return `
         <tr data-id="${tutor.id}">
             <td>${tutor.id}</td>
             <td>
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <img src="${tutor.image}" alt="${escapeHtml(tutor.name)}" 
-                         style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                    <img src="${tutor.image || 'https://via.placeholder.com/40?text=Tutor'}" 
+                         alt="${escapeHtml(tutor.name)}" 
+                         style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;"
+                         onerror="this.src='https://via.placeholder.com/40?text=Tutor'">
                     <div>
                         <strong>${escapeHtml(tutor.name)}</strong>
+                        ${levelBadge}
                         ${tutor.bio ? `<br><small style="color: #666;">${escapeHtml(tutor.bio.substring(0, 50))}...</small>` : ''}
                     </div>
                 </div>
@@ -113,12 +129,16 @@ function displayTutors(tutors) {
                 </div>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
-// Setup tutor form - SIMPLIFIED VERSION
+// Setup tutor form
 function setupForm() {
     const form = document.getElementById('tutorForm');
+    
+    // Check if level dropdown exists, if not add it
+    ensureLevelField();
+    
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
         
@@ -128,6 +148,15 @@ function setupForm() {
         const experience = document.getElementById('tutorExperience').value.trim();
         const image = document.getElementById('tutorImage').value.trim();
         const bio = document.getElementById('tutorBio').value.trim();
+        
+        // Get level - check if element exists
+        let level = 'high'; // default
+        const levelElement = document.getElementById('tutorLevel');
+        if (levelElement) {
+            level = levelElement.value;
+        } else {
+            console.log('Level element not found, using default: high');
+        }
         
         // Validate inputs
         if (!name || !rating || !subjectsInput || !experience || !image) {
@@ -142,6 +171,8 @@ function setupForm() {
         
         // Convert subjects string to array (from comma-separated)
         const subjects = subjectsInput.split(',').map(s => s.trim().toLowerCase()).filter(s => s.length > 0);
+        
+        console.log('Adding new tutor:', { name, subjects, rating, experience, level });
         
         try {
             const token = localStorage.getItem('adminToken');
@@ -164,11 +195,12 @@ function setupForm() {
                 },
                 body: JSON.stringify({
                     name,
-                    subjects, // Send as array
+                    subjects,
                     rating,
                     experience,
                     image,
-                    bio
+                    bio,
+                    level // Include level in the request
                 })
             });
             
@@ -190,6 +222,8 @@ function setupForm() {
                 
                 // Reset form
                 form.reset();
+                // Reset level to default
+                if (levelElement) levelElement.value = 'high';
                 delete form.dataset.editingId;
                 const submitBtn = form.querySelector('button[type="submit"]');
                 submitBtn.innerHTML = '<i class="fas fa-plus-circle"></i> Add Tutor';
@@ -213,7 +247,45 @@ function setupForm() {
     });
 }
 
-// Edit tutor - SIMPLIFIED VERSION
+// Ensure level field exists in the form
+function ensureLevelField() {
+    const form = document.getElementById('tutorForm');
+    const existingLevel = document.getElementById('tutorLevel');
+    
+    if (!existingLevel) {
+        // Find the subjects group to insert before
+        const subjectsGroup = document.querySelector('#tutorSubjects').closest('.form-group');
+        
+        // Create level dropdown
+        const levelGroup = document.createElement('div');
+        levelGroup.className = 'form-group';
+        levelGroup.innerHTML = `
+            <label for="tutorLevel"><i class="fas fa-school"></i> Tutor Level</label>
+            <select id="tutorLevel" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                <option value="high">High School</option>
+                <option value="primary">Primary School</option>
+                <option value="both">Both (Primary & High School)</option>
+            </select>
+        `;
+        
+        // Insert after the name/rating row
+        const firstRow = form.querySelector('div[style*="grid-template-columns: 1fr 1fr"]');
+        if (firstRow) {
+            firstRow.after(levelGroup);
+        } else {
+            // Fallback: insert after the first form group
+            const firstGroup = form.querySelector('.form-group');
+            if (firstGroup) {
+                firstGroup.after(levelGroup);
+            } else {
+                form.prepend(levelGroup);
+            }
+        }
+        console.log('Added level field to form');
+    }
+}
+
+// Edit tutor
 async function editTutor(id) {
     try {
         const token = localStorage.getItem('adminToken');
@@ -242,6 +314,12 @@ async function editTutor(id) {
                 document.getElementById('tutorImage').value = tutor.image || '';
                 document.getElementById('tutorBio').value = tutor.bio || '';
                 
+                // Set level
+                const levelElement = document.getElementById('tutorLevel');
+                if (levelElement && tutor.level) {
+                    levelElement.value = tutor.level;
+                }
+                
                 // Change form to update mode
                 const form = document.getElementById('tutorForm');
                 const submitBtn = form.querySelector('button[type="submit"]');
@@ -260,7 +338,7 @@ async function editTutor(id) {
     }
 }
 
-// Delete tutor functions (keep as is)
+// Delete tutor functions
 function openDeleteTutorModal(id) {
     currentDeleteId = id;
     document.getElementById('deleteTutorModal').style.display = 'block';
@@ -421,7 +499,7 @@ function broadcastNotification(type) {
     }
 }
 
-// Add CSS for tutor display
+// Add CSS for tutor display and level badges
 const style = document.createElement('style');
 style.textContent = `
     .subject-tag {
@@ -450,6 +528,30 @@ style.textContent = `
     .status-badge.inactive {
         background: #f8d7da;
         color: #721c24;
+    }
+    
+    .level-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: bold;
+        margin-left: 5px;
+    }
+    
+    .level-badge.primary {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .level-badge.high {
+        background: #d1ecf1;
+        color: #0c5460;
+    }
+    
+    .level-badge.both {
+        background: #d4edda;
+        color: #155724;
     }
 `;
 document.head.appendChild(style);
