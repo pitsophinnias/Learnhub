@@ -266,7 +266,7 @@ async function openAssignModal(subjectId, subjectName, subjectLevel) {
     }
 }
 
-// Load available tutors (filtered by level)
+// Load available tutors
 async function loadAvailableTutors(level) {
     try {
         console.log(`Loading available tutors for level: ${level}`);
@@ -278,33 +278,69 @@ async function loadAvailableTutors(level) {
             return;
         }
         
-        // Fetch tutors filtered by level
-        const url = `${API_BASE}/api/admin/tutors-by-level?level=${level}&nocache=${Date.now()}`;
-        console.log('Fetching from:', url);
+        let url;
+        let tutors = [];
         
-        const response = await fetch(url, {
-            headers: { 
-                'Authorization': `Bearer ${token}`,
-                'Cache-Control': 'no-cache'
+        if (level === 'both') {
+            // For 'both' subjects, we need to show tutors with level 'high', 'primary', OR 'both'
+            // We'll fetch all tutors and filter client-side
+            url = `${API_BASE}/api/admin/tutors?nocache=${Date.now()}`;
+            console.log('Fetching all tutors for both subject:', url);
+            
+            const response = await fetch(url, {
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            
+            if (response.status === 401) {
+                localStorage.removeItem('adminToken');
+                window.location.href = 'admin_login.html';
+                return;
             }
-        });
-        
-        if (response.status === 401) {
-            localStorage.removeItem('adminToken');
-            window.location.href = 'admin_login.html';
-            return;
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            const allTutors = await response.json();
+            console.log(`Received ${allTutors.length} total tutors`);
+            
+            // For 'both' subjects, include tutors with level 'high', 'primary', OR 'both'
+            tutors = allTutors.filter(tutor => 
+                tutor.level === 'high' || tutor.level === 'primary' || tutor.level === 'both'
+            );
+            
+            console.log(`Filtered to ${tutors.length} tutors for both subject (high, primary, or both)`);
+            
+        } else {
+            // For specific levels (primary or high), use the level-specific endpoint
+            url = `${API_BASE}/api/admin/tutors-by-level?level=${level}&nocache=${Date.now()}`;
+            console.log('Fetching from level endpoint:', url);
+            
+            const response = await fetch(url, {
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            
+            if (response.status === 401) {
+                localStorage.removeItem('adminToken');
+                window.location.href = 'admin_login.html';
+                return;
+            }
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            tutors = await response.json();
+            console.log(`Received ${tutors.length} tutors for level ${level}`);
         }
-        
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const tutors = await response.json();
-        console.log(`Received ${tutors.length} tutors for level ${level}`);
         
         allTutors = tutors;
-        
-        // Update the UI
         updateAvailableTutorsList();
         
     } catch (error) {
