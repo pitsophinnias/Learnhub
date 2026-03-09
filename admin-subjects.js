@@ -5,12 +5,14 @@ document.addEventListener('DOMContentLoaded', function() {
     setupForm();
     setupWebSocket();
     addLevelFilter();
+    setupEditModal(); // Add this line
 });
 
 let currentSubjectId = null;
 let currentAssignments = new Set();
 let allTutors = [];
 let currentSubjectLevel = null;
+let editingSubjectId = null; // Add this line
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
 
 // Check authentication
@@ -47,6 +49,10 @@ async function loadSubjects() {
             return;
         }
         
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const subjects = await response.json();
         displaySubjects(subjects);
     } catch (error) {
@@ -55,7 +61,7 @@ async function loadSubjects() {
     }
 }
 
-// Display subjects in table with level badges
+// Display subjects in table with level badges and edit button
 function displaySubjects(subjects) {
     const tbody = document.getElementById('subjectsList');
     
@@ -85,6 +91,18 @@ function displaySubjects(subjects) {
             levelBadge = '<span class="level-badge high">High School</span>'; // Default
         }
         
+        // Show detailed tutor counts if available
+        let tutorDisplay = `<strong>${subject.total_tutor_count || subject.tutor_count || 0} total tutors</strong>`;
+        if (subject.primary_tutor_count !== undefined || subject.high_tutor_count !== undefined) {
+            tutorDisplay = `
+                <strong>${subject.total_tutor_count || 0} tutors</strong>
+                <br><small style="color: #666;">
+                    <span style="color: #856404;">Primary: ${subject.primary_tutor_count || 0}</span> | 
+                    <span style="color: #0c5460;">High: ${subject.high_tutor_count || 0}</span>
+                </small>
+            `;
+        }
+        
         return `
         <tr data-id="${subject.id}">
             <td>${subject.id}</td>
@@ -100,7 +118,7 @@ function displaySubjects(subjects) {
             <td>${escapeHtml(subject.description || 'No description')}</td>
             <td>
                 <div>
-                    <strong>${subject.tutor_count || 0} tutors</strong>
+                    ${tutorDisplay}
                     ${subject.tutor_names ? `<br><small>${escapeHtml(subject.tutor_names)}</small>` : ''}
                 </div>
             </td>
@@ -111,6 +129,9 @@ function displaySubjects(subjects) {
             </td>
             <td>
                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    <button onclick="openEditModal(${subject.id}, '${escapeHtml(subject.name)}', '${subject.level || 'high'}', '${escapeHtml(subject.description || '')}', '${escapeHtml(subject.icon || 'fas fa-book')}')" class="btn" style="padding: 5px 10px; font-size: 0.9rem; background: #f39c12;">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
                     <button onclick="openAssignModal(${subject.id}, '${escapeHtml(subject.name)}', '${subject.level || 'high'}')" class="btn" style="padding: 5px 10px; font-size: 0.9rem;">
                         <i class="fas fa-user-plus"></i> Assign
                     </button>
@@ -121,6 +142,125 @@ function displaySubjects(subjects) {
             </td>
         </tr>
     `}).join('');
+}
+
+// Setup edit modal
+function setupEditModal() {
+    // Create edit modal if it doesn't exist
+    if (!document.getElementById('editSubjectModal')) {
+        const modalHTML = `
+            <div id="editSubjectModal" class="modal" style="display: none;">
+                <div class="modal-content" style="max-width: 500px;">
+                    <span class="close-btn" onclick="closeEditModal()">&times;</span>
+                    <h3><i class="fas fa-edit"></i> Edit Subject</h3>
+                    
+                    <form id="editSubjectForm">
+                        <div class="form-group">
+                            <label for="editSubjectName"><i class="fas fa-heading"></i> Subject Name</label>
+                            <input type="text" id="editSubjectName" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editSubjectLevel"><i class="fas fa-school"></i> Education Level</label>
+                            <select id="editSubjectLevel" required style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+                                <option value="high">High School</option>
+                                <option value="primary">Primary School</option>
+                                <option value="both">Both (Primary & High School)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editSubjectDescription"><i class="fas fa-file-alt"></i> Description</label>
+                            <textarea id="editSubjectDescription" rows="3"></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="editSubjectIcon"><i class="fas fa-icons"></i> Font Awesome Icon Class</label>
+                            <input type="text" id="editSubjectIcon" value="fas fa-book">
+                            <small style="color: #666;">Use Font Awesome classes (e.g., fas fa-laptop-code)</small>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px;">
+                            <button type="button" onclick="closeEditModal()" class="btn" style="background: #6c757d;">Cancel</button>
+                            <button type="submit" class="btn" style="background: #f39c12;">Update Subject</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+        
+        // Add submit handler
+        document.getElementById('editSubjectForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            await updateSubject();
+        });
+    }
+}
+
+// Open edit modal with subject data
+function openEditModal(id, name, level, description, icon) {
+    editingSubjectId = id;
+    
+    document.getElementById('editSubjectName').value = name;
+    document.getElementById('editSubjectLevel').value = level;
+    document.getElementById('editSubjectDescription').value = description;
+    document.getElementById('editSubjectIcon').value = icon;
+    
+    document.getElementById('editSubjectModal').style.display = 'block';
+}
+
+// Close edit modal
+function closeEditModal() {
+    editingSubjectId = null;
+    document.getElementById('editSubjectModal').style.display = 'none';
+    document.getElementById('editSubjectForm').reset();
+}
+
+// Update subject
+async function updateSubject() {
+    if (!editingSubjectId) return;
+    
+    const name = document.getElementById('editSubjectName').value.trim();
+    const level = document.getElementById('editSubjectLevel').value;
+    const description = document.getElementById('editSubjectDescription').value.trim();
+    const icon = document.getElementById('editSubjectIcon').value.trim();
+    
+    if (!name || !level) {
+        showNotification('Subject name and level are required', 'error');
+        return;
+    }
+    
+    try {
+        const token = localStorage.getItem('adminToken');
+        const response = await fetch(`${API_BASE}/api/admin/subjects/${editingSubjectId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ name, level, description, icon })
+        });
+        
+        if (response.status === 401) {
+            localStorage.removeItem('adminToken');
+            window.location.href = 'admin_login.html';
+            return;
+        }
+        
+        const result = await response.json();
+        
+        if (response.ok) {
+            showNotification('Subject updated successfully!', 'success');
+            closeEditModal();
+            loadSubjects(); // Refresh the list
+        } else {
+            showNotification(result.error || 'Error updating subject', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating subject:', error);
+        showNotification('Error updating subject', 'error');
+    }
 }
 
 // Setup subject form with level
@@ -606,6 +746,11 @@ window.onclick = function(event) {
     const modal = document.getElementById('assignModal');
     if (event.target === modal) {
         closeAssignModal();
+    }
+    
+    const editModal = document.getElementById('editSubjectModal');
+    if (event.target === editModal) {
+        closeEditModal();
     }
 };
 

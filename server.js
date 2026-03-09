@@ -116,7 +116,8 @@ function broadcastNotification(type, message = null) {
         'announcement_deleted': 'Announcement deleted',
         'tutor_added': 'New tutor added',
         'tutor_deleted': 'Tutor removed',
-        'subject_added': 'New subject added'
+        'subject_added': 'New subject added',
+        'subject_updated': 'Subject updated'  // Add this line
     };
     
     const notification = {
@@ -495,13 +496,17 @@ app.get('/api/tutors/:level/:subject', async (req, res) => {
             WHERE LOWER(s.name) = $1 
               AND t.is_active = true
               AND s.is_available = true
-              AND (t.level = $2 OR t.level = 'both')
+              AND (
+                  (s.level = 'both' AND (t.level = $2 OR t.level = 'both')) OR
+                  (s.level = $2 AND (t.level = $2 OR t.level = 'both'))
+              )
             ORDER BY t.rating DESC
         `;
         
         const result = await pool.query(query, [subject.toLowerCase(), level]);
         
         if (result.rows.length === 0) {
+            // Fallback query for backward compatibility
             const fallbackQuery = `
                 SELECT DISTINCT t.* 
                 FROM tutors t
@@ -514,6 +519,7 @@ app.get('/api/tutors/:level/:subject', async (req, res) => {
             return res.status(200).json(fallbackResult.rows);
         }
         
+        console.log(`Found ${result.rows.length} ${level} tutors for ${subject}`);
         res.status(200).json(result.rows);
         
     } catch (error) {
@@ -563,17 +569,20 @@ app.get('/api/admin/tutors-by-level', authenticateToken, async (req, res) => {
     try {
         const { level } = req.query;
         
-        let query = 'SELECT * FROM tutors';
+        let query = 'SELECT * FROM tutors WHERE is_active = true';
         let params = [];
         
-        if (level && level !== 'all') {
-            query = 'SELECT * FROM tutors WHERE level = $1 OR level = $2 ORDER BY name';
-            params = [level, 'both'];
+        if (level === 'primary') {
+            query = 'SELECT * FROM tutors WHERE (level = $1 OR level = $2) AND is_active = true ORDER BY name';
+            params = ['primary', 'both'];
+        } else if (level === 'high') {
+            query = 'SELECT * FROM tutors WHERE (level = $1 OR level = $2) AND is_active = true ORDER BY name';
+            params = ['high', 'both'];
         } else {
-            query = 'SELECT * FROM tutors ORDER BY name';
+            query = 'SELECT * FROM tutors WHERE is_active = true ORDER BY name';
         }
         
-        console.log(`Fetching tutors by level: ${level || 'all'}`);
+        console.log(`Fetching tutors for level: ${level}`);
         const result = await pool.query(query, params);
         
         console.log(`Found ${result.rows.length} tutors`);
@@ -770,10 +779,10 @@ app.get('/api/primary/subjects', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count
+                   COUNT(DISTINCT ts.tutor_id) FILTER (WHERE t.level = 'primary' OR t.level = 'both') as tutor_count
             FROM subjects s
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
-            LEFT JOIN tutors t ON ts.tutor_id = t.id
+            LEFT JOIN tutors t ON ts.tutor_id = t.id AND t.is_active = TRUE
             WHERE s.is_available = TRUE 
               AND (s.level = 'primary' OR s.level = 'both')
             GROUP BY s.id
@@ -791,14 +800,12 @@ app.get('/api/high/subjects', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count
+                   COUNT(DISTINCT ts.tutor_id) FILTER (WHERE t.level = 'high' OR t.level = 'both') as tutor_count
             FROM subjects s
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
-            LEFT JOIN tutors t ON ts.tutor_id = t.id
+            LEFT JOIN tutors t ON ts.tutor_id = t.id AND t.is_active = TRUE
             WHERE s.is_available = TRUE 
               AND (s.level = 'high' OR s.level = 'both')
-              AND (t.is_active = TRUE OR t.is_active IS NULL)
-              AND (t.level IN ('high', 'both') OR t.level IS NULL)
             GROUP BY s.id
             ORDER BY s.name
         `);
@@ -810,25 +817,31 @@ app.get('/api/high/subjects', async (req, res) => {
 });
 
 // Get all subjects for admin (Protected)
-app.get('/api/primary/subjects', async (req, res) => {
+app.get('/api/admin/subjects', authenticateToken, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT s.*, 
-                   COUNT(DISTINCT ts.tutor_id) as tutor_count
+                   COUNT(DISTINCT ts.tutor_id) as total_tutor_count,
+                   COUNT(DISTINCT ts.tutor_id) FILTER (WHERE t.level = 'primary' OR t.level = 'both') as primary_tutor_count,
+                   COUNT(DISTINCT ts.tutor_id) FILTER (WHERE t.level = 'high' OR t.level = 'both') as high_tutor_count,
+                   STRING_AGG(DISTINCT t.name, ', ') as tutor_names
             FROM subjects s
             LEFT JOIN tutor_subjects ts ON s.id = ts.subject_id
-            LEFT JOIN tutors t ON ts.tutor_id = t.id
-            WHERE s.is_available = TRUE 
-              AND (s.level = 'primary' OR s.level = 'both')
-              AND (t.is_active = TRUE OR t.is_active IS NULL)
-              AND (t.level IN ('primary', 'both') OR t.level IS NULL)
+            LEFT JOIN tutors t ON ts.tutor_id = t.id AND t.is_active = TRUE
             GROUP BY s.id
             ORDER BY s.name
         `);
-        res.status(200).json(result.rows);
+
+        // Transform the result to include a single tutor_count for display
+        const transformedRows = result.rows.map(row => ({
+            ...row,
+            tutor_count: row.total_tutor_count // Keep this for backward compatibility
+        }));
+        
+        res.status(200).json(transformedRows);
     } catch (error) {
-        console.error('Error fetching primary school subjects:', error.message);
-        res.status(500).json({ error: 'Error fetching primary school subjects' });
+        console.error('Error fetching subjects for admin:', error.message);
+        res.status(500).json({ error: 'Error fetching subjects' });
     }
 });
 
@@ -857,6 +870,46 @@ app.post('/api/admin/subjects', authenticateToken, async (req, res) => {
             res.status(400).json({ error: 'Subject already exists' });
         } else {
             res.status(500).json({ error: 'Error adding subject' });
+        }
+    }
+});
+
+// Update subject (Protected) - ADD THIS NEW ENDPOINT
+app.put('/api/admin/subjects/:subjectId', authenticateToken, async (req, res) => {
+    try {
+        const { subjectId } = req.params;
+        const { name, description, icon, level } = req.body;
+        
+        if (!level || !['primary', 'high', 'both'].includes(level)) {
+            return res.status(400).json({ error: 'Invalid subject level. Must be primary, high, or both' });
+        }
+
+        const result = await pool.query(
+            `UPDATE subjects 
+             SET name = COALESCE($1, name),
+                 description = COALESCE($2, description),
+                 icon = COALESCE($3, icon),
+                 level = COALESCE($4, level)
+             WHERE id = $5 
+             RETURNING *`,
+            [name, description, icon, level, subjectId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Subject not found' });
+        }
+        
+        broadcastNotification('subject_updated');
+        res.status(200).json({ 
+            message: 'Subject updated successfully', 
+            subject: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error updating subject:', error.message);
+        if (error.code === '23505') {
+            res.status(400).json({ error: 'Subject name already exists' });
+        } else {
+            res.status(500).json({ error: 'Error updating subject' });
         }
     }
 });
@@ -947,30 +1000,39 @@ app.post('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, as
         const { tutorId, subjectId } = req.params;
         
         const tutorCheck = await pool.query(
-            'SELECT id, name, level, subjects FROM tutors WHERE id = $1 AND is_active = true',
+            'SELECT id, name, level, subjects FROM tutors WHERE id = $1',
             [tutorId]
         );
         
         if (tutorCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Tutor not found or inactive' });
+            return res.status(404).json({ error: 'Tutor not found' });
         }
         
         const tutor = tutorCheck.rows[0];
 
         const subjectCheck = await pool.query(
-            'SELECT id, name, level FROM subjects WHERE id = $1 AND is_available = true',
+            'SELECT id, name, level FROM subjects WHERE id = $1',
             [subjectId]
         );
         
         if (subjectCheck.rows.length === 0) {
-            return res.status(404).json({ error: 'Subject not found or unavailable' });
+            return res.status(404).json({ error: 'Subject not found' });
         }
         
         const subject = subjectCheck.rows[0];
 
-        if (tutor.level !== 'both' && subject.level !== 'both' && tutor.level !== subject.level) {
+        // Level validation logic:
+        // - If subject level is 'both', any tutor level works
+        // - If tutor level is 'both', any subject level works
+        // - Otherwise, levels must match
+        const isValidAssignment = 
+            subject.level === 'both' || 
+            tutor.level === 'both' || 
+            tutor.level === subject.level;
+        
+        if (!isValidAssignment) {
             return res.status(400).json({ 
-                error: `Level mismatch: Tutor is ${tutor.level} level but subject is ${subject.level} level` 
+                error: `Level mismatch: ${tutor.name} is a ${tutor.level} level tutor but ${subject.name} is a ${subject.level} level subject` 
             });
         }
         
@@ -979,12 +1041,11 @@ app.post('/api/admin/tutors/:tutorId/subjects/:subjectId', authenticateToken, as
             [tutorId, subjectId]
         );
 
+        // Update tutor's subjects array
         let updatedSubjects = [];
-        
         if (tutor.subjects && Array.isArray(tutor.subjects)) {
-            const subjectLower = subject.name.toLowerCase();
-            if (!tutor.subjects.some(s => s.toLowerCase() === subjectLower)) {
-                updatedSubjects = [...tutor.subjects, subjectLower];
+            if (!tutor.subjects.includes(subject.name.toLowerCase())) {
+                updatedSubjects = [...tutor.subjects, subject.name.toLowerCase()];
             } else {
                 updatedSubjects = tutor.subjects;
             }
