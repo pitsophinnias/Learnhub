@@ -37,17 +37,8 @@ let ws = null;
 document.addEventListener('DOMContentLoaded', function() {
     console.log('LearnHub initialized');
     
-    // Mobile menu toggle
-    const menuToggle = document.getElementById('menu-toggle');
-    const navMenu = document.getElementById('nav-menu');
-    const mainNav = document.getElementById('main-nav');
-    
-    if (menuToggle && navMenu) {
-        menuToggle.addEventListener('click', function() {
-            mainNav.classList.toggle('side-menu');
-            mainNav.classList.toggle('active');
-        });
-    }
+    // Initialize mobile menu (REPLACED the old menu toggle code)
+    initMainMobileMenu();
     
     // Setup smooth scrolling for navigation
     setupSmoothScrolling(); 
@@ -119,17 +110,106 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup WebSocket for real-time updates
     setupAnnouncementWebSocket();
-    
-    // Close mobile menu when clicking outside
-    document.addEventListener('click', function(event) {
-        if (mainNav && mainNav.classList.contains('active') && 
-            !event.target.closest('nav') && 
-            !event.target.closest('.menu-toggle')) {
-            mainNav.classList.remove('active');
-            mainNav.classList.remove('side-menu');
+});
+
+// ==============================================
+// MOBILE MENU FUNCTIONS (ADD THIS NEW SECTION)
+// ==============================================
+
+function initMainMobileMenu() {
+    const menuToggle = document.getElementById('menuToggle');
+    const navMenu = document.getElementById('navMenu');
+    const menuOverlay = document.getElementById('menuOverlay');
+    const body = document.body;
+    const mainNav = document.getElementById('main-nav');
+
+    if (!menuToggle || !navMenu) return;
+
+    function closeMenu() {
+        navMenu.classList.remove('active');
+        if (menuOverlay) menuOverlay.classList.remove('active');
+        body.classList.remove('menu-open');
+        if (mainNav) mainNav.classList.remove('side-menu', 'active');
+    }
+
+    function openMenu() {
+        navMenu.classList.add('active');
+        if (menuOverlay) menuOverlay.classList.add('active');
+        body.classList.add('menu-open');
+    }
+
+    menuToggle.addEventListener('click', function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (navMenu.classList.contains('active')) {
+            closeMenu();
+        } else {
+            openMenu();
         }
     });
-});
+
+    if (menuOverlay) {
+        menuOverlay.addEventListener('click', function(e) {
+            e.preventDefault();
+            closeMenu();
+        });
+    }
+
+    // Close menu when clicking on a link (for mobile)
+    const menuLinks = navMenu.querySelectorAll('a');
+    menuLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            // Check if it's a hash link for smooth scrolling
+            const href = this.getAttribute('href');
+            if (href.startsWith('#')) {
+                e.preventDefault();
+                const targetElement = document.querySelector(href);
+                if (targetElement) {
+                    const headerHeight = document.querySelector('.main-nav').offsetHeight || 70;
+                    const targetPosition = targetElement.offsetTop - headerHeight;
+                    
+                    window.scrollTo({
+                        top: targetPosition,
+                        behavior: 'smooth'
+                    });
+                }
+            }
+            
+            // Close menu on mobile after click
+            if (window.innerWidth <= 768) {
+                setTimeout(closeMenu, 150);
+            }
+        });
+    });
+
+    // Close menu on window resize if opened in mobile view
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && navMenu.classList.contains('active')) {
+            closeMenu();
+        }
+    });
+
+    // Highlight active section on scroll
+    window.addEventListener('scroll', function() {
+        const sections = document.querySelectorAll('section[id]');
+        const scrollPosition = window.scrollY + 100;
+
+        sections.forEach(section => {
+            const sectionTop = section.offsetTop;
+            const sectionBottom = sectionTop + section.offsetHeight;
+            const sectionId = section.getAttribute('id');
+            
+            if (scrollPosition >= sectionTop && scrollPosition < sectionBottom) {
+                menuLinks.forEach(link => {
+                    link.classList.remove('active');
+                    if (link.getAttribute('href') === `#${sectionId}`) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        });
+    });
+}
 
 // ==============================================
 // SMOOTH SCROLLING
@@ -157,13 +237,6 @@ function setupSmoothScrolling() {
                     top: targetPosition,
                     behavior: 'smooth'
                 });
-                
-                // Close mobile menu if open
-                const mainNav = document.getElementById('main-nav');
-                if (mainNav && mainNav.classList.contains('active')) {
-                    mainNav.classList.remove('active');
-                    mainNav.classList.remove('side-menu');
-                }
             }
         });
     });

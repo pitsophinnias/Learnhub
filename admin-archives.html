@@ -137,21 +137,28 @@
     <header>
         <div class="container">
             <h1><i class="fas fa-archive"></i> Archived Bookings</h1>
-            <p>View and manage archived bookings (older than 7 days)</p>
+            <p>View and manage archived bookings</p>
         </div>
     </header>
 
-    <nav>
-        <div class="container">
-            <ul>
-                <li><a href="admin.html"><i class="fas fa-arrow-left"></i> Back to Dashboard</a></li>
-                <li><a href="admin-announcements.html"><i class="fas fa-bullhorn"></i> Announcements</a></li>
-                <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutors</a></li>
-                <li><a href="admin-subjects.html"><i class="fas fa-book-open"></i> Subjects</a></li>
-                <li class="admin-login-item"><a href="index.html" class="admin-login-btn"><i class="fas fa-home"></i> Home</a></li>
-            </ul>
-        </div>
-    </nav>
+    <nav class="admin-nav">
+    <div class="container">
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <ul id="navMenu">
+            <li><a href="admin.html"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+            <li><a href="admin-announcements.html"><i class="fas fa-bullhorn"></i> Announcements</a></li>
+            <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutors</a></li>
+            <li><a href="admin-subjects.html"><i class="fas fa-book-open"></i> Subjects</a></li>
+            <li><a href="admin-archives.html" class="active"><i class="fas fa-archive"></i> Archives</a></li>
+            <li class="admin-login-item"><a href="index.html"><i class="fas fa-home"></i> Home</a></li>
+        </ul>
+    </div>
+</nav>
+
+<!-- Add overlay for mobile menu -->
+<div class="menu-overlay" id="menuOverlay"></div>
 
     <main class="container">
         <div class="archives-header">
@@ -515,5 +522,6 @@
             }
         });
     </script>
+    <script src="admin-common.js"></script>
 </body>
 </html>

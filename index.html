@@ -15,21 +15,24 @@
         </div>
     </header>
 
-    <nav id="main-nav">
-        <div class="container">
-            <button class="menu-toggle" id="menu-toggle" aria-label="Toggle menu">
-                <i class="fas fa-bars"></i>
-            </button>
-            <ul id="nav-menu">
-                <li><a href="#announcements">Home</a></li>
-                <li><a href="#high-school-subjects">High School</a></li>
-				<li><a href="#primary-school-subjects">Primary</a></li>
-				<li><a href="#calendar">Countdown</a></li>
-                <li><a href="#how-it-works">How It Works</a></li>
-                <li><a href="#contact">Contact</a></li>
-            </ul>
-        </div>
-    </nav>
+    <nav id="main-nav" class="main-nav">
+    <div class="container">
+        <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+            <i class="fas fa-bars"></i>
+        </button>
+        <ul id="navMenu">
+            <li><a href="#announcements">Home</a></li>
+            <li><a href="#high-school-subjects">High School</a></li>
+            <li><a href="#primary-school-subjects">Primary</a></li>
+            <li><a href="#calendar">Countdown</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#contact">Contact</a></li>
+        </ul>
+    </div>
+</nav>
+
+<!-- Add overlay for mobile menu -->
+<div class="menu-overlay" id="menuOverlay"></div>
 	
 	<section id="announcements" class="announcements-section">
         <div class="container">
@@ -211,5 +214,4 @@
 
     <script src="script.js"></script>
 </body>
-
 </html>
