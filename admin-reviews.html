@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Reviews - LearnHub Admin</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><i class="fas fa-star"></i> Manage Reviews</h1>
+            <p>Add and manage student testimonials</p>
+        </div>
+    </header>
+
+    <nav class="admin-nav">
+        <div class="container">
+            <button class="menu-toggle" id="menuToggle" aria-label="Toggle menu">
+                <i class="fas fa-bars"></i>
+            </button>
+            <ul id="navMenu">
+                <li><a href="admin.html"><i class="fas fa-tachometer-alt"></i> Dashboard</a></li>
+                <li><a href="admin-announcements.html"><i class="fas fa-bullhorn"></i> Announcements</a></li>
+                <li><a href="admin-tutors.html"><i class="fas fa-chalkboard-teacher"></i> Tutors</a></li>
+                <li><a href="admin-subjects.html"><i class="fas fa-book-open"></i> Subjects</a></li>
+                <li><a href="admin-reviews.html" class="active"><i class="fas fa-star"></i> Reviews</a></li>
+                <li><a href="admin-archives.html"><i class="fas fa-archive"></i> Archives</a></li>
+                <li class="admin-login-item"><a href="index.html"><i class="fas fa-home"></i> Home</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="menu-overlay" id="menuOverlay"></div>
+
+    <main class="container">
+        <!-- Add/Edit Review Form -->
+        <section id="review-form-section">
+            <h2><i class="fas fa-plus-circle"></i> <span id="form-title">Add New Review</span></h2>
+            <form id="review-form" class="admin-form" style="background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                <input type="hidden" id="review-id">
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label for="full-name"><i class="fas fa-user"></i> Full Name *</label>
+                        <input type="text" id="full-name" required placeholder="e.g., Thabo Boloetse">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="school"><i class="fas fa-school"></i> School *</label>
+                        <input type="text" id="school" required placeholder="e.g., Lesotho International School">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label for="grade"><i class="fas fa-layer-group"></i> Grade/Class</label>
+                        <input type="text" id="grade" placeholder="e.g., Grade 6, Grade 9, Grade 10  ">
+                        <small style="color: #666;">Optional - e.g., Grade 6, Grade 9, Grade 10 etc.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="subjects"><i class="fas fa-book"></i> Subjects (comma separated) *</label>
+                        <input type="text" id="subjects" required placeholder="e.g., Mathematics, Physics, English">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="comments"><i class="fas fa-comment"></i> Comments *</label>
+                    <textarea id="comments" rows="4" required placeholder="Share their experience with LearnHub..."></textarea>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label for="image-path"><i class="fas fa-image"></i> Image Path</label>
+                        <input type="text" id="image-path" placeholder="/images/reviews/student1.jpg">
+                        
+                    </div>
+
+                    <div class="form-group">
+                        <label for="display-order"><i class="fas fa-sort"></i> Display Order</label>
+                        <input type="number" id="display-order" min="0" value="0">
+                        <small style="color: #666;">Lower numbers appear first</small>
+                    </div>
+
+                    <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+                        <label for="is-approved">
+                            <i class="fas fa-check-circle"></i> Approved
+                        </label>
+                        <input type="checkbox" id="is-approved" checked style="width: auto;">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="submit" class="btn">
+                        <i class="fas fa-save"></i> Save Review
+                    </button>
+                    <button type="button" class="btn" onclick="window.resetForm()" style="background: #95a5a6;">
+                        <i class="fas fa-undo"></i> Reset
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <!-- Reviews List -->
+        <section id="reviews-list" style="margin-top: 40px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2><i class="fas fa-list"></i> All Reviews</h2>
+                <button class="btn" onclick="window.fetchReviews()" style="padding: 8px 16px;">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+
+            <div id="reviews-container" style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Image</th>
+                            <th>Name</th>
+                            <th>School</th>
+                            <th>Grade</th>
+                            <th>Subjects</th>
+                            <th>Comments</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reviews-table-body">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 40px;">
+                                <i class="fas fa-spinner fa-spin" style="font-size: 2rem;"></i>
+                                <p>Loading reviews...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>© 2025 LearnHub. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="admin-common.js"></script>
+    <script src="admin-reviews.js"></script>
+</body>
+</html>

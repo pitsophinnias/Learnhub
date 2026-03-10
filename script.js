@@ -42,6 +42,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Setup smooth scrolling for navigation
     setupSmoothScrolling(); 
+
+    //Review loading
+    loadReviews();
     
     // Calendar initialization
     initializeCalendar();
@@ -1116,9 +1119,169 @@ if (!document.querySelector('#notification-styles')) {
     document.head.appendChild(style);
 }
 
+// ==============================================
+// REVIEWS FUNCTIONS
+// ==============================================
+
+async function loadReviews() {
+    try {
+        console.log('Loading reviews...');
+        const response = await fetch('/api/reviews');
+        
+        if (!response.ok) {
+            // If it's a 500 error, the table might not exist yet - handle gracefully
+            if (response.status === 500) {
+                console.log('Reviews endpoint returned 500 - table might not exist yet');
+                displayEmptyReviews();
+                return;
+            }
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const reviews = await response.json();
+        console.log('Reviews received:', reviews);
+        
+        const container = document.getElementById('reviews-container');
+        if (!container) {
+            console.error('Reviews container not found!');
+            return;
+        }
+        
+        if (!reviews || reviews.length === 0) {
+            displayEmptyReviews();
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="reviews-grid">
+                ${reviews.map(review => {
+                    // Handle subjects display
+                    let subjectsDisplay = '';
+                    if (Array.isArray(review.subjects)) {
+                        subjectsDisplay = review.subjects.map(subject => 
+                            `<span class="subject-tag"><i class="fas fa-book"></i> ${escapeHtml(subject)}</span>`
+                        ).join('');
+                    } else if (typeof review.subjects === 'string') {
+                        // If subjects is a string, try to parse it or display as is
+                        const subjects = review.subjects.split(',').map(s => s.trim());
+                        subjectsDisplay = subjects.map(subject => 
+                            `<span class="subject-tag"><i class="fas fa-book"></i> ${escapeHtml(subject)}</span>`
+                        ).join('');
+                    } else {
+                        subjectsDisplay = '<span class="subject-tag">General</span>';
+                    }
+
+                    return `
+                        <div class="review-card">
+                            <div class="review-header">
+                                <div class="reviewer-image">
+                                    ${review.image_path 
+                                        ? `<img src="${review.image_path}" alt="${escapeHtml(review.full_name)}" 
+                                            onerror="this.src='/images/default-avatar.png'">` 
+                                        : `<img src="/images/default-avatar.png" alt="${escapeHtml(review.full_name)}">`
+                                    }
+                                </div>
+                                <div class="reviewer-info">
+                                    <h3>${escapeHtml(review.full_name || '')}</h3>
+                                    <p class="reviewer-school">
+                                        <i class="fas fa-school"></i> ${escapeHtml(review.school || '')}
+                                    </p>
+                                    ${review.grade ? `
+                                        <p class="reviewer-grade">
+                                            <i class="fas fa-layer-group"></i> ${escapeHtml(review.grade)}
+                                        </p>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="review-subjects">
+                                ${subjectsDisplay}
+                            </div>
+                            <div class="review-content">
+                                <i class="fas fa-quote-left quote-icon"></i>
+                                <p>${escapeHtml(review.comments || '')}</p>
+                            </div>
+                            <div class="review-rating">
+                                ${renderStars(5)}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+        
+    } catch (error) {
+        console.error('Error loading reviews:', error);
+        displayEmptyReviews(true);
+    }
+}
+
+// Helper function to display empty reviews message
+function displayEmptyReviews(showError = false) {
+    const container = document.getElementById('reviews-container');
+    if (!container) return;
+    
+    if (showError) {
+        container.innerHTML = `
+            <div class="reviews-grid">
+                <div class="review-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Unable to Load Reviews</h3>
+                    <p>Please try again later.</p>
+                    <button onclick="loadReviews()" class="btn" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div class="reviews-grid">
+                <div class="review-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-star" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Reviews Yet</h3>
+                    <p>Be the first to share your experience with LearnHub!</p>
+                </div>
+            </div>
+        `;
+    }
+}
+
+// Helper function to display empty reviews message
+function displayEmptyReviews(showError = false) {
+    const container = document.getElementById('reviews-container');
+    if (!container) return;
+    
+    if (showError) {
+        container.innerHTML = `
+            <div class="reviews-grid">
+                <div class="review-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>Unable to Load Reviews</h3>
+                    <p>Please try again later.</p>
+                    <button onclick="loadReviews()" class="btn" style="margin-top: 10px;">
+                        <i class="fas fa-sync-alt"></i> Retry
+                    </button>
+                </div>
+            </div>
+        `;
+    } else {
+        container.innerHTML = `
+            <div class="reviews-grid">
+                <div class="review-card" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    <i class="fas fa-star" style="font-size: 3rem; color: #ddd; margin-bottom: 20px;"></i>
+                    <h3>No Reviews Yet</h3>
+                    <p>Be the first to share your experience with LearnHub!</p>
+                </div>
+            </div>
+        `;
+    }
+}
+
+
 // Make functions globally available
 window.loadAnnouncements = loadAnnouncements;
 window.loadHighSchoolSubjects = loadHighSchoolSubjects;
 window.loadPrimarySchoolSubjects = loadPrimarySchoolSubjects;
 window.fetchTutorsByLevelAndSubject = fetchTutorsByLevelAndSubject;
 window.confirmBooking = confirmBooking;
+window.loadReviews = loadReviews;

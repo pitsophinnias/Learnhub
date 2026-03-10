@@ -117,7 +117,10 @@ function broadcastNotification(type, message = null) {
         'tutor_added': 'New tutor added',
         'tutor_deleted': 'Tutor removed',
         'subject_added': 'New subject added',
-        'subject_updated': 'Subject updated'  // Add this line
+        'subject_updated': 'Subject updated',
+        'review_added': 'New review added',
+        'review_updated': 'Review updated',
+        'review_deleted': 'Review deleted'
     };
     
     const notification = {
@@ -1446,6 +1449,206 @@ app.delete('/api/admin/archived-bookings/:id', authenticateToken, async (req, re
     } catch (error) {
         console.error('Error deleting archived booking:', error.message);
         res.status(500).json({ error: 'Error deleting archived booking' });
+    }
+});
+
+// ==============================================
+// REVIEWS ENDPOINTS
+// ==============================================
+
+// Get all approved reviews (public) - for index.html
+app.get('/api/reviews', async (req, res) => {
+    try {
+        // First check if the table exists
+        const tableCheck = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'reviews'
+            );
+        `);
+        
+        // If table doesn't exist, return empty array instead of error
+        if (!tableCheck.rows[0].exists) {
+            console.log('Reviews table does not yet exist');
+            return res.status(200).json([]);
+        }
+        
+        const result = await pool.query(
+            `SELECT id, full_name, school, grade, subjects, comments, image_path 
+             FROM reviews 
+             WHERE is_approved = true 
+             ORDER BY display_order ASC, created_at DESC`
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching reviews:', error.message);
+        // Return empty array instead of 500 error to prevent frontend breaking
+        res.status(200).json([]);
+    }
+});
+
+// Get all reviews for admin (Protected)
+app.get('/api/admin/reviews', authenticateToken, async (req, res) => {
+    try {
+        // First check if the table exists
+        const tableCheck = await pool.query(`
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'reviews'
+            );
+        `);
+        
+        // If table doesn't exist, return empty array
+        if (!tableCheck.rows[0].exists) {
+            console.log('Reviews table does not yet exist');
+            return res.status(200).json([]);
+        }
+        
+        const result = await pool.query(
+            `SELECT r.*, au.username AS created_by_username 
+             FROM reviews r
+             LEFT JOIN admin_users au ON r.created_by = au.id
+             ORDER BY r.display_order ASC, r.created_at DESC`
+        );
+        res.status(200).json(result.rows);
+    } catch (error) {
+        console.error('Error fetching admin reviews:', error.message);
+        res.status(500).json({ error: 'Error fetching reviews' });
+    }
+});
+
+// Create new review (Protected)
+app.post('/api/admin/reviews', authenticateToken, async (req, res) => {
+    try {
+        const { full_name, school, grade, subjects, comments, image_path, is_approved, display_order } = req.body;
+        const created_by = req.user.id;
+
+        // Validate required fields
+        if (!full_name || !school || !subjects || !comments) {
+            return res.status(400).json({ error: 'Full name, school, subjects, and comments are required' });
+        }
+
+        // Ensure subjects is an array
+        let subjectsArray = subjects;
+        if (!Array.isArray(subjects)) {
+            if (typeof subjects === 'string') {
+                subjectsArray = subjects.split(',').map(s => s.trim()).filter(s => s);
+            } else {
+                subjectsArray = [];
+            }
+        }
+
+        const result = await pool.query(
+            `INSERT INTO reviews (full_name, school, grade, subjects, comments, image_path, is_approved, display_order, created_by) 
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+             RETURNING *`,
+            [full_name, school, grade || null, subjectsArray, comments, image_path || null, is_approved !== false, display_order || 0, created_by]
+        );
+
+        broadcastNotification('review_added');
+        res.status(201).json({ 
+            message: 'Review added successfully', 
+            review: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error creating review:', error.message);
+        res.status(500).json({ error: 'Error creating review: ' + error.message });
+    }
+});
+
+// Update review (Protected)
+app.put('/api/admin/reviews/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { full_name, school, grade, subjects, comments, image_path, is_approved, display_order } = req.body;
+
+        let subjectsArray = subjects;
+        if (subjects && !Array.isArray(subjects)) {
+            if (typeof subjects === 'string') {
+                subjectsArray = subjects.split(',').map(s => s.trim()).filter(s => s);
+            }
+        }
+
+        const result = await pool.query(
+            `UPDATE reviews 
+             SET full_name = COALESCE($1, full_name),
+                 school = COALESCE($2, school),
+                 grade = COALESCE($3, grade),
+                 subjects = COALESCE($4, subjects),
+                 comments = COALESCE($5, comments),
+                 image_path = COALESCE($6, image_path),
+                 is_approved = COALESCE($7, is_approved),
+                 display_order = COALESCE($8, display_order),
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = $9 
+             RETURNING *`,
+            [full_name, school, grade, subjectsArray, comments, image_path, is_approved, display_order, id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Review not found' });
+        }
+
+        broadcastNotification('review_updated');
+        res.status(200).json({ 
+            message: 'Review updated successfully', 
+            review: result.rows[0] 
+        });
+    } catch (error) {
+        console.error('Error updating review:', error.message);
+        res.status(500).json({ error: 'Error updating review: ' + error.message });
+    }
+});
+
+// Delete review (Protected)
+app.delete('/api/admin/reviews/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const result = await pool.query(
+            'DELETE FROM reviews WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Review not found' });
+        }
+
+        broadcastNotification('review_deleted');
+        res.status(200).json({ message: 'Review deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting review:', error.message);
+        res.status(500).json({ error: 'Error deleting review' });
+    }
+});
+
+// Update review order (Protected)
+app.post('/api/admin/reviews/reorder', authenticateToken, async (req, res) => {
+    try {
+        const { orders } = req.body; // Array of {id, display_order}
+        
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            
+            for (const item of orders) {
+                await client.query(
+                    'UPDATE reviews SET display_order = $1 WHERE id = $2',
+                    [item.display_order, item.id]
+                );
+            }
+            
+            await client.query('COMMIT');
+            res.status(200).json({ message: 'Reviews reordered successfully' });
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        } finally {
+            client.release();
+        }
+    } catch (error) {
+        console.error('Error reordering reviews:', error.message);
+        res.status(500).json({ error: 'Error reordering reviews' });
     }
 });
 
